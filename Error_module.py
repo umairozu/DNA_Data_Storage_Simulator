@@ -1,5 +1,9 @@
+import os
 import random
+import re
 from itertools import chain
+from typing import final, Final
+
 import numpy as np
 from ordered_set import OrderedSet
 
@@ -54,6 +58,10 @@ mutation_attributes = {"1": {"deletion": {"position": {"random": 1},
                                            "pattern": {"A": 0.35, "T": 0.35, "C": 0.15, "G": 0.15}},
                              "substitution": {"pattern": {"TAG": "TGG", "TAC": "TGC"}}}}
 
+MUTATION_LIST: Final = ['insertion', 'deletion', 'substitution']
+
+MUTATED_TEXT = []
+
 class sequencingError:
 
     # user can provide their own mutation_attributes and error rates but should be of the same format
@@ -66,9 +74,17 @@ class sequencingError:
         self.seed = seed if seed else np.random.seed()
         self.visited_bases = [{"base": char, "visited": False} for char in self.seq]
 
+                                        # IMPORTANT IMPORTANT ⚠️ ⚠️ ⚠️
 
-    @staticmethod
-    def get_attributes(indels_type):
+        # If intended to run rounds of mutation on the sequence, then reset the 'self.visited_bases' to False at each round
+        # why ??
+        # because for instance after some substitution in round 1, a homopolymer is introduced at the substitution position,
+        # we need to allow homopolymer based mutation their for round 2.
+        # keeping visited[pos] = True in this case prevents realistic behavior.
+
+
+
+    def get_attributes(self, indels_type):
         # position is "Random" or "Homopolymer" location
         try:
             position = np.random.choice(list(indels_type["position"].keys()), p = list(indels_type["position"].values()))
@@ -80,7 +96,8 @@ class sequencingError:
         except KeyError:
             pattern = None
 
-        position_range = [20,100] # this is just an example initialization
+        #position_range = [20,100] # this is just an example initialization
+        position_range = None
         return position, pattern, position_range
 
     def insertion(self, ins_attr_dict = None):
@@ -90,7 +107,7 @@ class sequencingError:
         # default dictionary
         else:
             ins_dict = self.attributes['insertion']
-            position, pattern, position_range = self.attributes(ins_dict)
+            position, pattern, position_range = self.get_attributes(ins_dict)
 
         if not position or position == 'random':
             return self.indel(pattern,position_range,mode = 'insertion')
@@ -109,7 +126,7 @@ class sequencingError:
         # default dictionary
         else:
             del_dict = self.attributes['deletion']
-            position, pattern, position_range = self.attributes(del_dict)
+            position, pattern, position_range = self.get_attributes(del_dict)
 
         if not position or position == 'random':
             return self.indel(pattern,position_range,mode = 'deletion')
@@ -129,7 +146,7 @@ class sequencingError:
         # default dictionary
         else:
             sub_dict = self.attributes['substitution']
-            position, pattern, position_range = self.attributes(sub_attr_dict)
+            position, pattern, position_range = self.get_attributes(sub_dict)
 
         if not position or position == 'random':
             return self.positional_sub(pattern, position_range=position_range)
@@ -256,7 +273,7 @@ class sequencingError:
             """
             # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ #
             # instead i could make a validate pattern/ mutation_attributes method or class   #
-            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~IMPORTANT~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+            # ~~~~~~~~~~~~~~~~~~~~~~~~~~~⚠️IMPORTANT⚠️~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
         # sum of bases in new_pattern
         sum_bases = 0
@@ -336,33 +353,148 @@ class sequencingError:
 
         pos = random.choice(valid_indices)
 
-        return self.indel_sub_base(pos, mode = 'mismatch')
+        return self.indel_sub_base(pos, mode = 'substitution')
+
+
+
 
     def pattern_sub(self, pattern, position_range):
+        if position_range:
+            sequence_indices = range(position_range[0], position_range[1] + 1)
+        else:
+            sequence_indices = range(len(self.seq))
 
-        return pass # HERRE
+        print(sequence_indices)
+
+        # original seq = TAGC
+        # after deletion for instance it became "TA C"
+        # then 'TAC' WOULD NOT match "TA C"
+        # so doesn't need valid non-empty indices
+        """valid_indices = [i for i in sequence_indices if self.seq[i] != " "]
+        if valid_indices is None:
+            return None"""
+
+        motifs = pattern.keys()
+        motifs = sorted(motifs, reverse = False)
+        combined_motifs = "|".join(motifs)
+
+        motif_matcher = re.compile(combined_motifs)  # e.g; re.compile('ATCA|ATCG|GG|T')
+        print(motif_matcher)
+
+        # Now searching the sequence region specified for any matching motifs
+        # storing all matched motifs string if any with their positions
+        # Then, randomly choosing one of those motifs and replacing it in the original sequence
+
+
+        #matches = motif_matcher.finditer(self.seq, sequence_indices.start, sequence_indices.stop)
+        matches = [{
+            'base': m.group(),
+            'start': m.start(),
+            'end' : m.end() - 1
+                    }
+            for m in motif_matcher.finditer(self.seq, sequence_indices.start, sequence_indices.stop)
+        ]
+
+        if matches:
+            print(f"All matches =\n {matches}")
+
+            chosen_match = random.choice(matches)
+            chosen_span = [chosen_match['start'], chosen_match['end']]
+            print(f" Chosen match = {chosen_match['base']}, Chosen Span = {chosen_span}")
+            chosen_match = chosen_match['base']
+
+            if type(pattern[chosen_match]) == dict:
+                print("Dict as pattern")
+                replacement = np.random.choice(list(pattern[chosen_match].keys()), p = list(pattern[chosen_match].values()))
+            elif type(pattern[chosen_match]) == list:
+                print("List as pattern")
+                replacement = np.random.choice(pattern[chosen_match])
+            else:
+                print("String as pattern")
+                replacement = pattern[chosen_match]
+
+            print(f"replacement: {replacement}")
+
+            #Substituting here
+            print(f"Original Sequence: {self.seq}")
+            self.seq = self.seq[:chosen_span[0]] + replacement + self.seq[chosen_span[1] + 1:]
+
+            #logging mutated position to avoid re-mutation at the same position
+
+            for pos, base in zip(range(chosen_span[0], chosen_span[1] + 1), replacement):
+                new_mutation = {'base': base, 'visited': True}
+                self.visited_bases[pos] = new_mutation
+
+            print(f"Substituted Sequence: {self.seq}")
+            print(self.visited_bases)
+
+            """
+            # EXAMPLE OUTPUT
+            re.compile('TAC|TAG')
+            All matches = [{'base': 'TAG', 'start': 11, 'end': 13}]
+            Chosen match = TAG, Chosen Span = [11, 13]
+            String as pattern
+            replacement: TGG
+            initial Sequence: ATCGAATCAGA TAG  ATAA
+            after   Sequence: ATCGAATCAGA TGG  ATAA
+            """
+
+        else: # if no matched motif in the sequence, we are falling back to random single base substitution in def 'no_pattern_sub' function
+            return self.no_pattern_sub(position_range)
 
 
 
+    def run_mutations(self, mutation_list = MUTATION_LIST):
+        print(self.seq)
+        for mutation_type in mutation_list:
+            error_rate = self.error_rates["raw_rate"] * self.error_rates[str(mutation_type)]
+            #attributes = self.get_attributes(mutation_type)
+            np.random.seed(self.seed)
+            for _ in range(len(self.seq)):
+                if np.random.random() <= error_rate:
+                    eval('self.' + mutation_type)()
+        print(self.seq)
+        MUTATED_TEXT.append(self.seq)
+        return self.seed
 
+    def manual_mutation(self):
 
+        #TODO
+        return None
 
 
 
 
 if __name__ == "__main__":
     #my_poly = [['T', 'T', 'T', 'T', 'T'], ['T', 'T', 'T'], ['G', 'G', 'G'], ['A', 'A', 'A']]
-    my_pattern = {"A": 0.25, "C": 0.25, "G": 0.25, "T": 0.25}
+    #my_pattern = {"ATCG": 0.25, "ATCA": 0.25, "GG": 0.25, "T": 0.25}
+
+    #my_pattern = {"A": {"G": 0.5, "T": 0.25, "C": 0.25}}                     # dict
+    #my_pattern = {"TAG": "TGG", "TAC": "TGC"}                                 # string
+    #my_pattern = {"CG": ["CA", "TG"]}                                        # list
+    my_pattern = {"CG": {"CA": 0.5, "TG": 0.5}}
+
     ins_mode = "insertion"
     del_mode = "deletion"
     sub_mode = "substitution"
 
-    #sequence = "ATCGAATCGGGATAGATAATCGAATCGGGATAGATA"
-    sequence = "ATCGAATCGGATAGATAA"
+    sequence = "ATCGAATCGGGATAGATAATCGAATCGGGATAGATA"
+    #sequence = "ATCGAATCAGATAGATAA"
     my_poly2 = homopolymer(sequence)
 
-    sE = sequencingError(sequence, "sequencing", mutation_attributes,err_rates)
+    #sE = sequencingError(sequence, "sequencing", attribute = mutation_attributes["3"],error_rate = err_rates["3"])
 
-    indel_in_homopolymer = sE.indel_homopolymer(my_poly2,my_pattern,del_mode)
-    print(indel_in_homopolymer)
+    #indel_in_homopolymer = sE.indel_homopolymer(my_poly2,my_pattern,del_mode)
+    #print(indel_in_homopolymer)
 
+    #print(sE.pattern_sub(my_pattern,None))
+
+    with open(fr'{os.getcwd()}\dna-fountain\Turkish_anthem.tar.gz.dna_order.txt') as file:
+        lines = file.readlines()
+        for line in lines:
+            sE = sequencingError(line.strip(), "sequencing", attribute = mutation_attributes["1"],error_rate = err_rates["3"])
+            sE.run_mutations()
+
+    with open(fr'{os.getcwd()}\dna-fountain\Turkish_anthem.tar.gz.dna_order.txt', "w+") as f:
+        for line in MUTATED_TEXT:
+            f.writelines(line+"\n")
