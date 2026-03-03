@@ -32,8 +32,10 @@ def homopolymer(sequence):
         length = len(group_list)
         end_pos = start_pos + length - 1
 
+        #print(group_list)
         error = error_func(length)
-        if error > 0.0:
+        if error > 0.0 and group_list[0] != " ":
+            #print(group_list)
             max_homopolymers.append({
                 'base': k, 'chars': group_list, 'start_pos': start_pos, 'end_pos': end_pos, 'error': error
             }) #output currently: [{'base': 'A', 'chars': ['A', 'A', 'A', 'A'], 'start_pos': 0, 'end_pos': 3, 'error': 0.6}]
@@ -50,7 +52,7 @@ def homopolymer(sequence):
     return max_homopolymers
 
 if __name__ == "__main__":
-    print(homopolymer("AAGTCAAAA"))
+    print(homopolymer("AAG   TCA AAA"))
 
 
 

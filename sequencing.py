@@ -6,7 +6,7 @@
 """
 Error rates origin
 
-- 1 & 2 = Illumina
+- 1 & 2 = Illumina     1 -> method == 'Single End', 2 -> method == 'Paired End'
 - 3 & 4 = PacBio       3 -> method == 'CCS', 4 -> method == 'Subread'
 - 5 & 6 = Nanopore     5 -> method == '1D' , 6 -> method == '2D'
 
@@ -44,6 +44,8 @@ mutation_attributes = {"1": {"deletion": {"position": {"random": 1},
                              "insertion": {"position": {"homopolymer": 0.46, "random": 0.54},
                                            "pattern": {"A": 0.35, "T": 0.35, "C": 0.15, "G": 0.15}},
                              "substitution": {"pattern": {"TAG": "TGG", "TAC": "TGC"}}}}
+
+
 MUTATED_TEXT = []
 
 if __name__ == "__main__":
