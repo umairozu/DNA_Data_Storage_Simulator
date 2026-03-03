@@ -1,68 +1,15 @@
-import os
+
 import random
 import re
-from itertools import chain
-from typing import final, Final
-
+from typing import Final
 import numpy as np
 from ordered_set import OrderedSet
-
 from Homopolymer import homopolymer
 
-# sequencing_error.py
-
-# Error_rates taken from mesa
-# https://github.com/umr-ds/mesa_dna_sim/blob/master/simulators/sequencing/sequencing_error.py
-
-err_rates = {"1": {"raw_rate": 0.0021, "substitution": 0.81, "deletion": 0.0024, "insertion": 0.0013},
-             "2": {"raw_rate": 0.0032, "substitution": 0.79, "deletion": 0.0018, "insertion": 0.0011},
-             "3": {"raw_rate": 0.02, "substitution": 0.75, "deletion": 0.20, "insertion": 0.05},
-             "4": {"raw_rate": 0.14, "substitution": 0.37, "deletion": 0.21, "insertion": 0.42},
-             "5": {"raw_rate": 0.2, "substitution": 0.48, "deletion": 0.37, "insertion": 0.15},
-             "6": {"raw_rate": 0.13, "substitution": 0.41, "deletion": 0.36, "insertion": 0.23}}
-
-mutation_attributes = {"1": {"deletion": {"position": {"random": 1},
-                                          "pattern": {"G": 0.25, "C": 0.25, "A": 0.25, "T": 0.25}},
-                             "insertion": {"position": {"random": 1},
-                                           "pattern": {"G": 0.25, "C": 0.25, "A": 0.25, "T": 0.25}},
-                             "substitution": {"pattern": {"A": {"G": 0.50, "T": 0.25, "C": 0.25},
-                                                      "T": {"G": 0.50, "A": 0.25, "C": 0.25},
-                                                      "C": {"G": 0.50, "A": 0.25, "T": 0.25},
-                                                      "G": {"T": 0.50, "A": 0.25, "C": 0.25}}}},
-                       "2": {"deletion": {"position": {"random": 1},
-                                          "pattern": {"G": 0.25, "C": 0.25, "A": 0.25, "T": 0.25}},
-                             "insertion": {"position": {"random": 1},
-                                           "pattern": {"G": 0.25, "C": 0.25, "A": 0.25, "T": 0.25}},
-                             "substitution": {"pattern": {"A": {"G": 0.50, "T": 0.25, "C": 0.25},
-                                                      "T": {"G": 0.50, "A": 0.25, "C": 0.25},
-                                                      "C": {"G": 0.50, "A": 0.25, "T": 0.25},
-                                                      "G": {"T": 0.50, "A": 0.25, "C": 0.25}}}},
-                       "3": {"deletion": {"position": {"homopolymer": 0.85, "random": 0.15},
-                                          "pattern": {"G": 0.35, "C": 0.35, "A": 0.15, "T": 0.15}},
-                             "insertion": {"position": {"homopolymer": 0.85, "random": 0.15},
-                                           "pattern": {"A": 0.35, "T": 0.35, "C": 0.15, "G": 0.15}},
-                             "substitution": {"pattern": {"CG": {"CA": 0.5, "TG": 0.5}}}},
-                       "4": {"deletion": {"position": {"homopolymer": 0.85, "random": 0.15},
-                                          "pattern": {"G": 0.35, "C": 0.35, "A": 0.15, "T": 0.15}},
-                             "insertion": {"position": {"homopolymer": 0.85, "random": 0.15},
-                                           "pattern": {"A": 0.35, "T": 0.35, "C": 0.15, "G": 0.15}},
-                             "substitution": {"pattern": {"CG": {"CA": 0.5, "TG": 0.5}}}},
-                       "5": {"deletion": {"position": {"homopolymer": 0.46, "random": 0.54},
-                                          "pattern": {"G": 0.35, "C": 0.35, "A": 0.15, "T": 0.15}},
-                             "insertion": {"position": {"homopolymer": 0.46, "random": 0.54},
-                                           "pattern": {"A": 0.35, "T": 0.35, "C": 0.15, "G": 0.15}},
-                             "substitution": {"pattern": {"TAG": "TGG", "TAC": "TGC"}}},
-                       "6": {"deletion": {"position": {"homopolymer": 0.46, "random": 0.54},
-                                          "pattern": {"G": 0.35, "C": 0.35, "A": 0.15, "T": 0.15}},
-                             "insertion": {"position": {"homopolymer": 0.46, "random": 0.54},
-                                           "pattern": {"A": 0.35, "T": 0.35, "C": 0.15, "G": 0.15}},
-                             "substitution": {"pattern": {"TAG": "TGG", "TAC": "TGC"}}}}
 
 MUTATION_LIST: Final = ['insertion', 'deletion', 'substitution']
 
-MUTATED_TEXT = []
-
-class sequencingError:
+class Error_simulation:
 
     # user can provide their own mutation_attributes and error rates but should be of the same format
     def __init__(self, seq, process,attribute = None,error_rate = None, seed= None):
@@ -192,7 +139,7 @@ class sequencingError:
 
         valid_indices = [i for i in sequence_indices if self.seq[i] != " "]
 
-        if valid_indices is None:
+        if not valid_indices:
             return None ####
 
         indices = [i for i in valid_indices if self.seq[i] == target_base]
@@ -235,6 +182,7 @@ class sequencingError:
         new_mutation = {"base": base, "visited": True}
 
         if self.visited_bases[pos]["visited"] == False:
+            print(fr"Mode: {mode.upper()}")
             if mode == 'insertion':  # pre-insertion to be specific!
                 self.seq = self.seq[:pos] + base + self.seq[pos:]
                 self.visited_bases.insert(pos, new_mutation)  # not touching original base (at pos) again
@@ -348,7 +296,7 @@ class sequencingError:
             sequence_indices = range(len(self.seq))
 
         valid_indices = [i for i in sequence_indices if self.seq[i] != " "]
-        if valid_indices is None:
+        if not valid_indices:
             return None ####
 
         pos = random.choice(valid_indices)
@@ -449,19 +397,32 @@ class sequencingError:
         for mutation_type in mutation_list:
             error_rate = self.error_rates["raw_rate"] * self.error_rates[str(mutation_type)]
             #attributes = self.get_attributes(mutation_type)
-            np.random.seed(self.seed)
+            #np.random.seed(self.seed)
             for _ in range(len(self.seq)):
                 if np.random.random() <= error_rate:
                     eval('self.' + mutation_type)()
+        """
         print(self.seq)
-        MUTATED_TEXT.append(self.seq)
-        return self.seed
+        """
+        #return self.seed
 
-    def manual_mutation(self):
 
-        #TODO
+    # To manually target a specific region in the sequence
+    # Just a helper function
+    # user input something like: [{'base': 'A', 'chars': ['A', 'A', 'A', 'A'], 'start_pos': 0, 'end_pos': 3, 'error': 0.6}]
+    # and relevant things are retrieved from the input
+    def manual_mutation(self, input_error):
+        if np.random.random() <= input_error['error']:
+            mutation_types = ['insertion', 'deletion', 'substitution']
+            mutation_prob = [self.error_rates['insertion'], self.error_rates['deletion'], self.error_rates['substitution']]
+            chosen_mutation = np.random.choice(mutation_types, p = mutation_prob)
+            attributes = {'position_range': [input_error['start_pos'], input_error['end_pos']]}
+            eval('self.' + chosen_mutation)(attributes)
         return None
 
+    # read important notice in Constructor for reason of this method
+    def reset_visited(self):
+        self.visited_bases = [{"base": char, "visited": False} for char in self.seq]
 
 
 
@@ -489,12 +450,4 @@ if __name__ == "__main__":
 
     #print(sE.pattern_sub(my_pattern,None))
 
-    with open(fr'{os.getcwd()}\dna-fountain\Turkish_anthem.tar.gz.dna_order.txt') as file:
-        lines = file.readlines()
-        for line in lines:
-            sE = sequencingError(line.strip(), "sequencing", attribute = mutation_attributes["1"],error_rate = err_rates["3"])
-            sE.run_mutations()
 
-    with open(fr'{os.getcwd()}\dna-fountain\Turkish_anthem.tar.gz.dna_order.txt', "w+") as f:
-        for line in MUTATED_TEXT:
-            f.writelines(line+"\n")

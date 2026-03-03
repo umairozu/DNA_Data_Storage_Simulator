@@ -1,18 +1,17 @@
 import os
-import re
 
-path = fr'{os.getcwd()}\dna-fountain\Turkish_anthem.tar.gz.dna'
+path = fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna'
 
 with open(path) as file:
     lines_1 = []
-    cutting_site = "GATC"
+    #cutting_site = "GATC"
     primer_F = "TGGCTCATTTCACAATCGGT"
     binding_site = "ATAAATGACCTGCCGTGCAA"
     for line in file:
         if line[0] != '>':
-            lines_1.append(primer_F+line.strip() + cutting_site + binding_site)
+            lines_1.append(primer_F+line.strip() + binding_site)
 
-new_path = fr'{os.getcwd()}\dna-fountain\Turkish_anthem.tar.gz.dna_order.txt'
+new_path = fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna_order.txt'
 
 if not os.path.exists(new_path): # just creating empty file
         with open(new_path,"w+") as file:
@@ -70,21 +69,3 @@ with open(final_path,"a+") as file:
     for i, j in zip(identifiers,lines_1):
         file.writelines(i)
         file.writelines(j + "\n")
-
-
-
-
-
-"""    while not x:
-        for i, _ in enumerate(identifiers):
-            file.writelines(identifiers[i]+"\n")
-            x = True
-            y = False
-            while not y:
-                for j, _ in enumerate(lines_1):
-                    file.writelines(lines_1[j])
-                    y = True
-                    x = False
-                    counter += 1
-                    if counter == len(identifiers) - 1:
-                        break"""
