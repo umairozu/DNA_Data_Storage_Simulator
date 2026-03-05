@@ -2,11 +2,11 @@ import os
 from Error_module import Error_simulation
 
 err_rates = {
-             "1": {"raw_rate": 0.000043, "substitution": 0.99, "deletion": 0.01, "insertion": 0},
-             "2": {"raw_rate": 0.0000024, "substitution": 1, "deletion": 0, "insertion": 0},
-             "3": {"raw_rate": 0.0000028, "substitution": 1, "deletion": 0, "insertion": 0},
-             "4": {"raw_rate": 0.0000026, "substitution": 0.84, "deletion": 0.08, "insertion": 0.08},
-             "5": {"deletion": 0.3333, "substitution": 0.3333, "mismatch": 0.33340000000000003, "raw_rate": 0.0}
+             "1": {"raw_rate": 0.000043, "substitution": 0.99, "deletion": 0.01, "insertion": 0}, #Taq
+             "2": {"raw_rate": 0.0000024, "substitution": 1, "deletion": 0, "insertion": 0}, #Pwo
+             "3": {"raw_rate": 0.0000028, "substitution": 1, "deletion": 0, "insertion": 0}, #Pfu
+             "4": {"raw_rate": 0.0000026, "substitution": 0.84, "deletion": 0.08, "insertion": 0.08}, #Phusion
+             "5": {"deletion": 0.3333, "substitution": 0.3333, "mismatch": 0.33340000000000003, "raw_rate": 0.0} #None
              }
 
 mutation_attributes = {
@@ -66,12 +66,12 @@ if __name__ == "__main__":
     with open(fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna_order.txt') as f:
         initial_lines = [line.strip() for line in f if line.strip()]
         seq_objs = [Error_simulation(seq, "pcr", attribute = mutation_attributes["1"],
-                                     error_rate = err_rates["3"])
+                                     error_rate = err_rates["1"])
                     for seq in initial_lines
                     ]
 
     count = 1
-    while count < 300:
+    while count < 100:
         MUTATED_TEXT.clear()
         for sE in seq_objs:
             #sE.reset_visited() # See important Notice for info

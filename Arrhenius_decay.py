@@ -30,7 +30,7 @@ We are Replicating 'Arrhenius Calculate' behavior using RawData.xlsx:
 """
 
 @dataclass
-class CassetteTapeDecay:
+class Arrhenius_decay:
 
     k_dDNA: Dict[int, float]  # D-DNA tape: temp_C -> k   (key, value)
     k_eDNA: Dict[int, float]  # E-DNA tape: temp_C -> k   (key, value)
@@ -97,7 +97,7 @@ class CassetteTapeDecay:
 
     """Retrieve data from xlsx for related calculations"""
     @classmethod
-    def from_xlsx(cls, xlsx_path: str) -> "CassetteTapeDecay":
+    def from_xlsx(cls, xlsx_path: str) -> "Arrhenius_decay":
         wb = load_workbook(xlsx_path, data_only=True)
         ws = wb["Arrhenius Calculate"]
 
