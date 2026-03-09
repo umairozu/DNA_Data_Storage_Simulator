@@ -11,7 +11,7 @@ from typing import Optional, List
 
 from numpy.ma.core import append
 
-from CassetteTapeDecay import CassetteTapeDecay
+from Arrhenius_decay import Arrhenius_decay
 
 def isDna(seq: str)-> bool:
     if not seq:
@@ -22,7 +22,7 @@ def isDna(seq: str)-> bool:
     return True
 
 def fig_5E(
-        model: CassetteTapeDecay, temp_C: list[float], encapsulated: bool,
+        model: Arrhenius_decay, temp_C: list[float], encapsulated: bool,
         weeks: float, graph_points: int, out_png: str
             ):
 
@@ -54,7 +54,7 @@ def fig_5E(
 
 
 def fig5G(
-        model: CassetteTapeDecay, temp_min: float, temp_max: float,
+        model: Arrhenius_decay, temp_min: float, temp_max: float,
         step_c: float, mark_temp: Optional[list[float]],out_png: str
             ):
 
@@ -102,7 +102,7 @@ def main():
     if not isDna(args.seq):
         sys.exit("Input sequence must only contain A/C/G/T characters")
 
-    model = CassetteTapeDecay.from_xlsx("RawData.xlsx")
+    model = Arrhenius_decay.from_xlsx("RawData.xlsx")
 
     out_fig5E = f"{args.save}_fig5E.png"
     out_fig5G = f"{args.save}_fig5G.png"

@@ -89,7 +89,7 @@ if __name__ == "__main__":
     NEW = []
     with open(fr'{os.getcwd()}\dna-fountain\synthesis_file_0.txt') as f:
         for line in f:
-            clean_lines = "\n".join(line.split())
+            clean_lines = line.split()[0]
             NEW.append(clean_lines)
 
     with open(fr'{os.getcwd()}\dna-fountain\synthesis_file_1.txt', "w") as f:
