@@ -168,13 +168,14 @@ with open(fr'{path}\pcr_sampled.txt', "w") as f:
         f.write(f'{count},{seq},{length}\n')
 
 # PCR amplification
-num_cycles = int(input("Enter the desired PCR cycle to run: "))
-c1 = num_cycles // 3
-c2 = c1 + num_cycles // 3
-c3 = num_cycles
+num_cycles = int(input("Enter the desired PCR cycle to run: ")) # e.g 30
+c1 = num_cycles // 3 # e.g 10
+c2 = c1 + num_cycles // 3 # e.g 10 + 10 = 20
+c3 = num_cycles # e.g 30
 
 max_yield = int(input("Enter the maximum pcr yield expected:")) # so new pool will be original molecules + pcr pool/yield
 
+E0_i = 0.9  # initial efficiency
 """Calculating per oligo Efficiency in the sample based on [PRIMER BINDING, GC CONTENT] of the oligo"""
 with open(fr'{path}\pcr_sampled.txt') as f:
     next(f)
@@ -182,97 +183,139 @@ with open(fr'{path}\pcr_sampled.txt') as f:
     for line in f:
         if "," in line.strip():
             count, seq, length = line.split(",")
-            data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip() })
+            data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip(), 'eff': seq_check(E0_i,seq) })
 
-    E0_i = 0.9 # initial efficiency
     remaining_yield = max_yield
 
-        e_i = E0_i
-        for c in range(c1 + 1): # on good conditions, exponential efficiency in c1
-            requested_copies = []
-            for index_i in data:
-                count_i = index_i['count']
-                seq_i = index_i['seq']
-                e_i = seq_check(e_i,seq_i)
-                amp_i = amp_factor(e_i)
-                n_i = count_i * amp_i
-                requested_copies.append(n_i)
-            total_demand = sum(requested_copies)
+    for c in range(0, c1): # on good conditions, exponential efficiency in c1
+        if remaining_yield <= 0:
+            break
 
-            if total_demand == 0: # nothing to amplify in this cycle
-                break
+        new_copy_count = []
+        requested_copies = []
 
-            if remaining_yield >= total_demand:
-                for i, item in enumerate(data):
-                    item['count'] += int(requested_copies[i])
-                remaining_yield -= total_demand
-            else: # if demand higher than what we have, we first check if yield remains then distribute proportionally, otherwise break from the cycle
-                if remaining_yield:
-                    for i, item in enumerate(data):
-                        fraction = requested_copies[i] / total_demand
-                        amount_given = fraction * remaining_yield
-                        item['count'] += int(amount_given)
-                else:
-                    break
-
-                # HERE-HERE-HERE-HERE !!!!! WORKING on global resource sharing idea
-            # HAVE to Induce PCR errors in every cycle as well
-
-        for c in range(c2 + 1): # efficiency become somewhat linear--> slow linear decrease
-            requested_copies = []
-            for index_i in data:
-                count_i = index_i['count']
-                seq_i = index_i['seq']
-                e_i = e_i - (e_i/10)
-                e_i = seq_check(e_i, seq_i)
-                amp_i = amp_factor(e_i)
-                n_i = count_i * amp_i
-                requested_copies.append(n_i)
-            total_demand = sum(requested_copies)
-
-            if total_demand == 0:
-                break
-
-            if remaining_yield >= total_demand:
-                for i, item in enumerate(data):
-                    item['count'] += int(requested_copies[i])
-                remaining_yield -= total_demand
+        for index_i in data:
+            #eff_01 = E0_i
+            count_i = index_i['count']
+            seq_i = index_i['seq']
+            eff = index_i['eff']
+            # Turning sequence check at every cycle off as it might cause unnecessary efficiency collapse, rather computing it once at the start
+            #eff = seq_check(eff, seq_i)
+            if not (0 <= eff <= 1):
+                n_i = count_i
+                delta = 0
             else:
-                if remaining_yield:
-                    for i, item in enumerate(data):
-                        fraction = requested_copies[i] / total_demand
-                        amount_given = fraction * remaining_yield
-                        item['count'] += int(amount_given)
-                else:
-                    break
-
-        for c in range(c3 + 1):  # efficiency plateaus
-            requested_copies = []
-            for index_i in data:
-                count_i = index_i['count']
-                seq_i = index_i['seq']
-                e_i = 0
-                e_i = seq_check(e_i, seq_i)
-                amp_i = amp_factor(e_i)
+                amp_i = amp_factor(eff)
                 n_i = count_i * amp_i
-                requested_copies.append(n_i)
-            total_demand = sum(requested_copies)
-
-            if total_demand == 0:
+                delta = n_i - count_i
+            requested_copies.append(delta)
+            new_copy_count.append(n_i)
+            index_i['eff'] = eff # this could store -ve efficiency, but we are dealing with it
+        total_demand = sum(requested_copies)
+        if total_demand == 0: # nothing to amplify in this cycle
+            break
+        if remaining_yield >= total_demand:
+            for i, item in enumerate(data):
+                item['count'] = int(new_copy_count[i])
+            remaining_yield -= total_demand
+        else: # if demand higher than what we have, we first check if yield remains then distribute proportionally, otherwise break from the cycle
+            if remaining_yield:
+                sum_amount_given = 0
+                for i, item in enumerate(data):
+                    fraction = requested_copies[i] / total_demand
+                    amount_given = fraction * remaining_yield
+                    sum_amount_given += amount_given
+                    item['count'] += int(amount_given)
+                remaining_yield -= sum_amount_given
+            else:
                 break
 
-            if remaining_yield >= total_demand:
-                for i, item in enumerate(data):
-                    item['count'] += int(requested_copies[i])
-                remaining_yield -= total_demand
+    for c in range(c1, c2): # efficiency become somewhat linear--> slow linear decrease
+        if remaining_yield <= 0:
+            break
+
+        new_copy_count = []
+        requested_copies = []
+
+        for index_i in data:
+            #eff_02 = eff_01
+            count_i = index_i['count']
+            seq_i = index_i['seq']
+            eff = index_i['eff']
+            eff = eff - (eff / 10)
+            #eff = seq_check(eff, seq_i)
+            if not (0 <= eff <= 1):
+                n_i = count_i
+                delta = 0
             else:
-                if remaining_yield:
-                    for i, item in enumerate(data):
-                        fraction = requested_copies[i] / total_demand
-                        amount_given = fraction * remaining_yield
-                        item['count'] += int(amount_given)
-                else:
-                    break
+                amp_i = amp_factor(eff)
+                n_i = count_i * amp_i
+                delta = n_i - count_i
+            requested_copies.append(delta)
+            new_copy_count.append(n_i)
+            index_i['eff'] = eff
+        total_demand = sum(requested_copies)
+        if total_demand == 0:
+            break
+        if remaining_yield >= total_demand:
+            for i, item in enumerate(data):
+                item['count'] = int(new_copy_count[i])
+            remaining_yield -= total_demand
+        else:
+            if remaining_yield:
+                sum_amount_given = 0
+                for i, item in enumerate(data):
+                    fraction = requested_copies[i] / total_demand
+                    amount_given = fraction * remaining_yield
+                    sum_amount_given += amount_given
+                    item['count'] += int(amount_given)
+                remaining_yield -= sum_amount_given
+            else:
+                break
+
+    for c in range(c2, c3):  # efficiency plateaus
+        if remaining_yield <= 0:
+            break
+
+        new_copy_count = []
+        requested_copies = []
+
+        for index_i in data:
+            #eff_03 = 0
+            count_i = index_i['count']
+            seq_i = index_i['seq']
+            eff = index_i['eff']
+            #eff = seq_check(eff, seq_i)
+            amp_i = 0.2 + eff  # very minimal amplification in plateau stage
+            if amp_i < 1.0: # preventing counts decrements incase eff is less than 0.8
+                n_i = count_i
+                delta = 0
+            else:
+                n_i = count_i * amp_i
+                delta = n_i - count_i
+
+            requested_copies.append(delta)
+            new_copy_count.append(n_i)
+            index_i['eff'] = eff
+        total_demand = sum(requested_copies)
+        if total_demand == 0:
+            break
+
+        if remaining_yield >= total_demand:
+            for i, item in enumerate(data):
+                item['count'] = int(new_copy_count[i])
+            remaining_yield -= total_demand
+        else:
+            if remaining_yield:
+                sum_amount_given = 0
+                for i, item in enumerate(data):
+                    fraction = requested_copies[i] / total_demand
+                    amount_given = int(fraction * remaining_yield)
+                    sum_amount_given += amount_given
+                    item['count'] += amount_given
+                remaining_yield -= sum_amount_given
+            else:
+                break
 
 """
     with open(path) as f:
