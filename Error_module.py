@@ -171,14 +171,14 @@ class Error_simulation:
         """
 
 
-        print(f"Original sequence: {self.seq}")
+        #print(f"Original sequence: {self.seq}")
 
 
         assert mode in ("insertion", "deletion", "substitution")
         assert  0 <= pos <= len(self.seq)
 
         base = random.choice(self.bases)
-        print(base)
+        #print(base)
         new_mutation = {"base": base, "visited": True}
 
         if self.visited_bases[pos]["visited"] == False:
@@ -344,37 +344,38 @@ class Error_simulation:
         ]
 
         if matches:
-            print(f"All matches =\n {matches}")
+            #print(f"All matches =\n {matches}")
 
             chosen_match = random.choice(matches)
+            chosen_base = chosen_match['base']
             chosen_span = [chosen_match['start'], chosen_match['end']]
             print(f" Chosen match = {chosen_match['base']}, Chosen Span = {chosen_span}")
-            chosen_match = chosen_match['base']
+            #chosen_match = chosen_match['base']
 
-            if type(pattern[chosen_match]) == dict:
-                print("Dict as pattern")
-                replacement = np.random.choice(list(pattern[chosen_match].keys()), p = list(pattern[chosen_match].values()))
-            elif type(pattern[chosen_match]) == list:
-                print("List as pattern")
-                replacement = np.random.choice(pattern[chosen_match])
+            if type(pattern[chosen_base]) == dict:
+                #print("Dict as pattern")
+                replacement = np.random.choice(list(pattern[chosen_base].keys()), p = list(pattern[chosen_base].values()))
+            elif type(pattern[chosen_base]) == list:
+                #print("List as pattern")
+                replacement = np.random.choice(pattern[chosen_base])
             else:
-                print("String as pattern")
-                replacement = pattern[chosen_match]
+                #print("String as pattern")
+                replacement = pattern[chosen_base]
 
-            print(f"replacement: {replacement}")
+            #print(f"replacement: {replacement}")
 
             #Substituting here
-            print(f"Original Sequence: {self.seq}")
+            #print(f"Original Sequence: {self.seq}")
             self.seq = self.seq[:chosen_span[0]] + replacement + self.seq[chosen_span[1] + 1:]
-
+            print("SUBSTITUTION")
             #logging mutated position to avoid re-mutation at the same position
 
             for pos, base in zip(range(chosen_span[0], chosen_span[1] + 1), replacement):
                 new_mutation = {'base': base, 'visited': True}
                 self.visited_bases[pos] = new_mutation
 
-            print(f"Substituted Sequence: {self.seq}")
-            print(self.visited_bases)
+            #print(f"Substituted Sequence: {self.seq}")
+            #print(self.visited_bases)
 
             """
             # EXAMPLE OUTPUT
@@ -393,7 +394,7 @@ class Error_simulation:
 
 
     def run_mutations(self, mutation_list = MUTATION_LIST):
-        print(self.seq)
+        #print(self.seq)
         for mutation_type in mutation_list:
             error_rate = self.error_rates["raw_rate"] * self.error_rates[str(mutation_type)]
             #attributes = self.get_attributes(mutation_type)

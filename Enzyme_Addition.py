@@ -2,14 +2,18 @@ import os
 
 path = fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna'
 
+lines_1 = []
 with open(path) as file:
-    lines_1 = []
     #cutting_site = "GATC"
-    primer_F = "TGGCTCATTTCACAATCGGT"
-    binding_site = "ATAAATGACCTGCCGTGCAA"
+    primer_F = "TGGCTCATTT"
+    primer_R = "ATAAATGACC"
     for line in file:
         if line[0] != '>':
-            lines_1.append(primer_F+line.strip() + binding_site)
+            lines_1.append(primer_F + line.strip() + primer_R)
+
+orig_length = len(lines_1[0])
+pF_length = len(primer_F)
+pR_length = len(primer_R)
 
 new_path = fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna_order.txt'
 
@@ -69,3 +73,7 @@ with open(final_path,"a+") as file:
     for i, j in zip(identifiers,lines_1):
         file.writelines(i)
         file.writelines(j + "\n")
+
+
+if __name__ == "__main__":
+    print(length_sequence)

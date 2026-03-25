@@ -1,6 +1,10 @@
 import os
 import random
+import re
+
 import numpy as np
+from fontTools.svgLib.path.parser import UPPERCASE
+
 from GC_content import gc_error_probability
 from Enzyme_Addition import primer_F, primer_R,orig_length,pF_length,pR_length
 from Error_module import Error_simulation
@@ -74,11 +78,19 @@ def seq_check(eff_i, sequence):
 
     # dropping efficiency if GC deviates from 45% - 55% range
     gc_error = gc_error_probability(sequence)
-    if 0.45 <= gc_error <= 0.55:
+    if gc_error <= 0.0:
         pass
+    elif gc_error <= 0.10:
+        eff_i *= 0.90
+    elif gc_error <= 0.25:
+        eff_i *= 0.75
+    elif gc_error <= 0.40:
+        eff_i *= 0.55
+    elif gc_error <= 0.60:
+        eff_i *= 0.35
     else:
-        eff_i *= 0.4
-        # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
+        eff_i *= 0.20
+        #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
         """OPTIONAL: Local GC Content affect"""
 
     # dropping efficiency if mismatches at the primer sites
@@ -199,7 +211,7 @@ with open(fr'{path}\pcr_sampled.txt') as f:
             count_i = index_i['count']
             seq_i = index_i['seq']
             eff = index_i['eff']
-            # Turning sequence check at every cycle off as it might cause unnecessary efficiency collapse, rather computing it once at the start
+            # Turning sequence check at every cycle off as it might cause unnecessary efficiency collapse, instead it is computed once at the start
             #eff = seq_check(eff, seq_i)
             if not (0 <= eff <= 1):
                 n_i = count_i
@@ -317,28 +329,103 @@ with open(fr'{path}\pcr_sampled.txt') as f:
             else:
                 break
 
-"""
-    with open(path) as f:
-        initial_lines = [line.strip() for line in f if line.strip()]
-        seq_objs = [Error_simulation(seq, "pcr", attribute = mutation_attributes["1"],
+# Writing back the copy counts after PCR completion
+with open(fr'{path}\pcr_complete.txt', "w") as f:
+    f.write("sampled_count, sequence, length, efficiency_Remaining\n")
+    for index in data:
+        count = index['count']
+        seq = index['seq']
+        length = index['length']
+        eff = index['eff']
+        f.write(f'{count},{seq},{length},{eff:.5f}\n')
+
+#Mutating oligo's and making several variants per oligo
+# around 5-10 variants randomly
+# keeping the original oligo sequence but distributing the copy counts across variants
+
+MUTATED_TEXT = []
+
+with open(fr'{path}\pcr_complete.txt') as f:
+    next(f)
+    rows = [line.strip().split(",") for line in f if line.strip()]
+    initial_copies, initial_lines, initial_length, eff = zip(*rows)
+
+    seq_objs = [Error_simulation(seq, "pcr", attribute = mutation_attributes["1"],
                                      error_rate = err_rates["1"])
                     for seq in initial_lines
                     ]
 
-    count = 1
-    while count < 30:
-        MUTATED_TEXT.clear()
-        for sE in seq_objs:
-            #sE.reset_visited() # See important Notice for info
-            sE.run_mutations()
-            MUTATED_TEXT.append(sE.seq)
+CHANGED_TEXT = []
+UN_CHANGED_TEXT = []
+UN_CHANGED_TEXT_02 = []
 
-        with open(fr'{os.getcwd()}\dna-fountain\storage_file_1.txt', "w") as f:
-            f.write("\n".join(MUTATED_TEXT) + "\n")
-        count += 1
+count = 1
+while count < 30:
+    MUTATED_TEXT.clear()
+    for sE in seq_objs:
+        #sE.reset_visited() # See important Notice for info
+        sE.run_mutations()
+        MUTATED_TEXT.append(sE.seq)
+    count += 1
+
+# giving each original oligo sequence 80% copy count, rest of the count will go to mutated variants and CHIMERAS
+with open(fr'{path}\pcr_complete_2.txt', "w") as f:
+    f.write("sampled_count, sequence, length\n")
+    for copy_count, line, length in zip(initial_copies, initial_lines,initial_length):
+        UN_CHANGED_TEXT.append((int(int(copy_count) * 0.80), line))
+        f.write(f"{int(int(copy_count) * 0.80)},{line},{length}\n")
+
+# giving each mutated sequence(sequences generated via Error_module.py) a 10% copy count of original sequence
+with open(fr'{path}\pcr_CHANGED_POOL.txt', "w") as f:
+    f.write("count, sequence, length\n")
+    for copy_count, line, length in zip(initial_copies, initial_lines, initial_length):
+        if line not in MUTATED_TEXT:
+            CHANGED_TEXT.append((int(int(copy_count) * 0.10),line))
+            f.write(f"{int(int(copy_count) * 0.10)},{line},{length}\n")
+        else:
+            UN_CHANGED_TEXT_02.append((int(int(copy_count) * 0.10),line)) # if a sequence is not mutated, adding the 10% count back to the original sequence
+
+
+# Making different variants per oligo, distributing 10% copy_count
+# NOTE: WE ARE DOING SUBSTITUTION ONLY as it is the predominant mutation error
+allowed_bases = re.compile(r"[AGCT]", re.IGNORECASE)
+LIST = []
+for copy_count, line in zip(initial_copies, initial_lines):
+    num_variant_line = random.randint(2,5)
+    random_mut_num = random.randint(1,3) # <----- we can control the amount of SUBS we want
+    line = line.upper()
+    copy_count_line = int(int(copy_count) * 0.10)
+    #print(f"copy_count_line: {copy_count_line}")
+    portions = np.random.multinomial(copy_count_line, [1 / num_variant_line] * num_variant_line) # distributes copy_count_line into x portions that sums upto the copy_count_line, GOOD!
+    #print(f"Portions: {portions}")
+    while num_variant_line > 0:
+        for i in range(0, random_mut_num + 1):
+            random_base = random.choice(['A', 'G', 'C', 'T'])
+            pos = random.randrange(len(line))
+            line = line[:pos] + random_base + line[pos + 1:]
+        num_variant_line -= 1
+        LIST.append((portions[num_variant_line],line))
+
+
+print(f"Length List = {len(LIST)+len(CHANGED_TEXT)+len(UN_CHANGED_TEXT)+len(UN_CHANGED_TEXT_02)}")
 """
+LIST = []
+CHANGED_TEXT = []
+UN_CHANGED_TEXT = []
+UN_CHANGED_TEXT_02 = []
+"""
+with open(fr'{path}\pcr_final.txt', "w") as f:
+    f.write("count, sequence, length\n")
+    for item in LIST:
+        f.write(f"{item[0]},{item[1]}\n")
+    for item in CHANGED_TEXT:
+        f.write(f"{item[0]},{item[1]}\n")
+    for item in UN_CHANGED_TEXT:
+        f.write(f"{item[0]},{item[1]}\n")
+    for item in UN_CHANGED_TEXT_02:
+        f.write(f"{item[0]},{item[1]}\n")
 
-MUTATED_TEXT = []
+# WORK ON CHIMERAS NOW!!
 
 if __name__ == "__main__":
-    print("HI")
+    print("Done")

@@ -58,7 +58,7 @@ if __name__ == "__main__":
                     ]
 
     count = 1
-    while count < 300:
+    while count < 100:
         MUTATED_TEXT.clear()
         for sE in seq_objs:
             #sE.reset_visited() # See important Notice for info
