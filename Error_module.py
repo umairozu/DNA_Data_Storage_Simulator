@@ -182,7 +182,7 @@ class Error_simulation:
         new_mutation = {"base": base, "visited": True}
 
         if self.visited_bases[pos]["visited"] == False:
-            print(fr"Mode: {mode.upper()}")
+            #print(fr"Mode: {mode.upper()}")
             if mode == 'insertion':  # pre-insertion to be specific!
                 self.seq = self.seq[:pos] + base + self.seq[pos:]
                 self.visited_bases.insert(pos, new_mutation)  # not touching original base (at pos) again

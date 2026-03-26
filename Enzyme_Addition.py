@@ -1,79 +1,111 @@
+
 import os
 
-path = fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna'
 
-lines_1 = []
-with open(path) as file:
-    #cutting_site = "GATC"
-    primer_F = "TGGCTCATTT"
-    primer_R = "ATAAATGACC"
-    for line in file:
-        if line[0] != '>':
-            lines_1.append(primer_F + line.strip() + primer_R)
+# --------------------
+# constants / paths
+# --------------------
+BASE_DIR = fr"{os.getcwd()}\dna-fountain"
+INPUT_PATH = fr"{BASE_DIR}\turkish_anthem.tar.gz.dna"
+ORDER_PATH = fr"{BASE_DIR}\turkish_anthem.tar.gz.dna_order.txt"
+FASTA_PATH = fr"{BASE_DIR}\final_file.FASTA"
 
-orig_length = len(lines_1[0])
-pF_length = len(primer_F)
-pR_length = len(primer_R)
-
-new_path = fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna_order.txt'
-
-if not os.path.exists(new_path): # just creating empty file
-        with open(new_path,"w+") as file:
-            pass
-
-with open(new_path, "a+") as file:  #appending text
-    file.writelines(lines_1)
-
-with open(new_path,"w") as file: #appending cutting site
-    for line in lines_1:
-        file.writelines(line + "\n")
+primer_F = "TGGCTCATTT"
+primer_R = "ATAAATGACC"
 
 
-#Users own primer's Input taken and added to the file
-"""
-pattern = re.compile(r'^[ACGTacgt]{20}$')
-
-primer_F = input("Enter Forward primer: \n").upper()
-while not pattern.fullmatch(primer_F):
-    primer_F = input("Enter Forward primer: \n").upper()
-
-
-primer_R = input("Enter Reverse primer: \n").upper()
-while not pattern.fullmatch(primer_R):
-    primer_R = input("Enter Reverse primer: \n").upper()
+# --------------------
+# read helpers
+# --------------------
+def read_payload_sequences(path):
+    lines = []
+    with open(path) as file:
+        for line in file:
+            if line and line[0] != ">":
+                lines.append(line.strip())
+    return lines
 
 
-print("Valid Inputs --> Proceed forward")
+def read_identifiers(path):
+    identifiers = []
+    with open(path) as file:
+        for line in file:
+            if line and line[0] == ">":
+                identifiers.append(line)
+    return identifiers
 
 
-with open(new_path) as file:
-    lines_2 = file.readlines()
+# --------------------
+# write helpers
+# --------------------
+def write_dna_order_file(path, oligos):
+    with open(path, "w") as file:
+        for line in oligos:
+            file.write(line + "\n")
 
-with open(new_path,"w+") as file:
-    for line in lines_2:
-        line = primer_F + line.strip() + primer_R
-        file.writelines(line + "\n")
-"""
 
 # final FASTA file creation
 # writing final Oligo sequence [Primer_F,RS,Payload,seed,cutting_site,binding_site] back with their
 # identifiers as FASTA file for later use (Debugging/ decode etc.)
-with open(path) as file:
-    identifiers = []
-    for line in file:
-        if line[0] == '>':
-            identifiers.append(line)
+# --------------------
+# build helpers
+# --------------------
+def build_oligos(payloads):
+    return [primer_F + seq + primer_R for seq in payloads]
 
-final_path = fr'{os.getcwd()}\dna-fountain\final_file.FASTA'
-if not os.path.exists(final_path):
-    with open(final_path, "w") as file:
-        pass
+def write_final_fasta(path, identifiers, oligos):
+    with open(path, "w") as file:
+        for ident, oligo in zip(identifiers, oligos):
+            file.write(ident)
+            file.write(oligo + "\n")
 
-with open(final_path,"a+") as file:
-    for i, j in zip(identifiers,lines_1):
-        file.writelines(i)
-        file.writelines(j + "\n")
+
+# --------------------
+# metadata for imports
+# --------------------
+_payloads = read_payload_sequences(INPUT_PATH)
+_oligos = build_oligos(_payloads)
+
+orig_length = len(_oligos[0]) if _oligos else 0
+pF_length = len(primer_F)
+pR_length = len(primer_R)
+
+
+# --------------------
+# runner
+# --------------------
+def prepare_enzyme_files():
+    identifiers = read_identifiers(INPUT_PATH)
+    write_dna_order_file(ORDER_PATH, _oligos)
+    write_final_fasta(FASTA_PATH, identifiers, _oligos)
 
 
 if __name__ == "__main__":
-    print(length_sequence)
+    prepare_enzyme_files()
+    print("Enzyme_Addition.py run")
+
+    # Users own primer's Input taken and added to the file
+    """
+    pattern = re.compile(r'^[ACGTacgt]{20}$')
+
+    primer_F = input("Enter Forward primer: \n").upper()
+    while not pattern.fullmatch(primer_F):
+        primer_F = input("Enter Forward primer: \n").upper()
+
+
+    primer_R = input("Enter Reverse primer: \n").upper()
+    while not pattern.fullmatch(primer_R):
+        primer_R = input("Enter Reverse primer: \n").upper()
+
+
+    print("Valid Inputs --> Proceed forward")
+
+
+    with open(new_path) as file:
+        lines_2 = file.readlines()
+
+    with open(new_path,"w+") as file:
+        for line in lines_2:
+            line = primer_F + line.strip() + primer_R
+            file.writelines(line + "\n")
+    """

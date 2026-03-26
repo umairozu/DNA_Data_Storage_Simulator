@@ -64,8 +64,9 @@ def copy_distribution(avg_copy_oligo=100e6, k=4):
 MUTATED_TEXT = []
 
 if __name__ == "__main__":
+    BASE_DIR = fr'{os.getcwd()}\dna-fountain'
 
-    with open(fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna_order.txt') as f:
+    with open(fr'{BASE_DIR}\turkish_anthem.tar.gz.dna_order.txt') as f:
         initial_lines = [line.strip() for line in f if line.strip()]
         seq_objs = [Error_simulation(seq, "synthesis", attribute = mutation_attributes["3"],
                                      error_rate = err_rates["3"])
@@ -80,24 +81,23 @@ if __name__ == "__main__":
             sE.run_mutations()
             MUTATED_TEXT.append(sE.seq)
 
-        with open(fr'{os.getcwd()}\dna-fountain\synthesis_file_0.txt', "w") as f:
+        with open(fr'{BASE_DIR}\synthesis_file_0.txt', "w") as f:
             f.write("\n".join(MUTATED_TEXT) + "\n")
         count += 1
 
 
-
     NEW = []
-    with open(fr'{os.getcwd()}\dna-fountain\synthesis_file_0.txt') as f:
+    with open(fr'{BASE_DIR}\synthesis_file_0.txt') as f:
         for line in f:
             clean_lines = line.split()[0]
             NEW.append(clean_lines)
 
-    with open(fr'{os.getcwd()}\dna-fountain\synthesis_file_1.txt', "w") as f:
+    with open(fr'{BASE_DIR}\synthesis_file_1.txt', "w") as f:
         f.write("\n".join(NEW) + "\n")
 
 
     #file read for copy:
-    with open(fr'{os.getcwd()}\dna-fountain\synthesis_file_1.txt') as f:
+    with open(fr'{BASE_DIR}\synthesis_file_1.txt') as f:
         lines = f.readlines()
 
 
@@ -107,8 +107,14 @@ if __name__ == "__main__":
         copies.append(oligo_copies)
 
 
-    with open(fr'{os.getcwd()}\dna-fountain\synthesis_file_2.txt', "w") as f:
+    with open(fr'{BASE_DIR}\synthesis_file_2.txt', "w") as f:
         for copy, line in zip(copies, lines):
             f.write(f"{copy},{line}")
+
+
+    print("Synthesis.py run")
+    os.remove(fr'{BASE_DIR}\synthesis_file_0.txt')
+    os.remove(fr'{BASE_DIR}\synthesis_file_1.txt')
+
 
 
