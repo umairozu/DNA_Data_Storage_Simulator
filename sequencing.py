@@ -19,6 +19,8 @@ mutation attributes origin
 import os
 from Error_module import Error_simulation
 
+BASE_DIR = fr'{os.getcwd()}\dna-fountain'
+
 err_rates = {"1": {"raw_rate": 0.0021, "substitution": 0.81, "deletion": 0.0024, "insertion": 0.0013},
              "2": {"raw_rate": 0.0032, "substitution": 0.79, "deletion": 0.0018, "insertion": 0.0011},
              "3": {"raw_rate": 0.02, "substitution": 0.75, "deletion": 0.20, "insertion": 0.05},
@@ -50,14 +52,73 @@ MUTATED_TEXT = []
 
 if __name__ == "__main__":
 
-    with open(fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna_order.txt') as f:
-        initial_lines = [line.strip() for line in f if line.strip()]
-        seq_objs = [Error_simulation(seq, "sequencing", attribute = mutation_attributes["1"],
-                                     error_rate = err_rates["3"])
-                    for seq in initial_lines
+    mode = input("Enter Sequencing Mode:  --help [1. Illumina, 2. PacBio, 3. Nanopore ]\n")
+    #assert mode in ["1","2","3"]
+    if mode == "1":
+        method = input("Enter method for illumina sequencing:  --help [1. Single-end, 2. Paired-end]\n")
+        #assert method in ["1", "2"]
+    elif mode == "2":
+        method = input("Enter method for PacBio sequencing:  --help [3. CCS, 4. Subread]\n")
+        #assert method in ["3", "4"]
+    elif mode == "3":
+        method = input("Enter method for Nanopore sequencing:  --help [5. 1D, 6. 2D]\n")
+        #assert method in ["5", "6"]
+    else:
+        mode = "1"
+        method = "1"
+        print("Default sequencing method chosen [illumina single-end sequencing]")
+
+
+
+    with open(fr'{BASE_DIR}\pcr_final.txt') as f:
+        rows = [line.strip().split(",") for line in f if line.strip()]
+        copy_count, lines, length = zip(*rows)
+        seq_objs = [Error_simulation(seq, "sequencing", attribute = mutation_attributes[mode],
+                                     error_rate = err_rates[method])
+                    for seq in lines
                     ]
 
-    count = 1
+# sampling for sequencing
+while True:
+    user_input = input("Enter sequencing sampling fraction (0-100%): \n")
+
+    try:
+        value = float(user_input)
+        if 0 <= value <= 100:
+            sampling_frac = value / 100
+            break
+        else:
+            print("Please enter a number between 0 and 100.")
+    except ValueError:
+        print("Invalid input. Please enter a numerical value (e.g., 5.5).")
+
+# sequencing depth input
+while True:
+    user_input_input = input("Enter a number for sequencing depth (0-100%): \n")
+
+    try:
+        value = float(user_input)
+        if 0 <= value <= 100:
+            sequencing_depth = value / 100
+            break
+        else:
+            print("Please enter a number between 0 and 100.")
+    except ValueError:
+        print("Invalid input. Please enter a numerical value (e.g., 5.5).")
+
+
+
+with open(fr'{BASE_DIR}\pcr_final.txt') as f:
+    next(f)
+    data = []
+    for line in f:
+        if "," in line.strip():
+            count, seq, length = line.split(",")
+            data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip() })
+
+
+
+    """    count = 1
     while count < 100:
         MUTATED_TEXT.clear()
         for sE in seq_objs:
@@ -67,4 +128,7 @@ if __name__ == "__main__":
 
         with open(fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna_order.txt', "w") as f:
             f.write("\n".join(MUTATED_TEXT) + "\n")
-        count += 1
+        count += 1"""
+
+
+    print("Sequencing.py run")
