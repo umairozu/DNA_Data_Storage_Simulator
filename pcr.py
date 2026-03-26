@@ -409,23 +409,93 @@ for copy_count, line in zip(initial_copies, initial_lines):
 
 print(f"Length List = {len(LIST)+len(CHANGED_TEXT)+len(UN_CHANGED_TEXT)+len(UN_CHANGED_TEXT_02)}")
 """
-LIST = []
-CHANGED_TEXT = []
-UN_CHANGED_TEXT = []
-UN_CHANGED_TEXT_02 = []
+LIST = [] # variants counts list with 10% of initial count
+CHANGED_TEXT = [] # Mutated oligos with 10% of initial count
+UN_CHANGED_TEXT = [] # original oligo with 80% of initial count
+UN_CHANGED_TEXT_02 = [] # if not Mutated, 10% of initial count back to original
 """
-with open(fr'{path}\pcr_final.txt', "w") as f:
+with open(fr'{path}\pcr_pre_final.txt', "w") as f:
     f.write("count, sequence, length\n")
     for item in LIST:
-        f.write(f"{item[0]},{item[1]}\n")
+        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
     for item in CHANGED_TEXT:
-        f.write(f"{item[0]},{item[1]}\n")
+        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
     for item in UN_CHANGED_TEXT:
-        f.write(f"{item[0]},{item[1]}\n")
+        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
     for item in UN_CHANGED_TEXT_02:
-        f.write(f"{item[0]},{item[1]}\n")
+        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
 
-# WORK ON CHIMERAS NOW!!
+# WORKING ON CHIMERAS NOW!!
+# reducing total copy count a little (taking 5% from pool), and distributing amongst Chimeras
+# DEFAULT: Chimeras are 5% of the total pcr reads in our simulator, Change the knob value below to increase/decrease their quantity
+LIST_02 = []
+LIST_03 = []
+with open(fr'{path}\pcr_pre_final.txt') as f:
+    next(f)
+    rows = [line.strip().split(",") for line in f if line.strip()]
+    copy_count, lines, _ = zip(*rows)
+    num_lines = len(lines)
+
+for copy, line in zip(copy_count, lines):
+    copy = int(copy)
+    if copy > 1000:
+        LIST_02.append((copy,line))
+    else:
+        LIST_03.append((copy,line))
+
+CHIMERAS_LIST = []
+chimeras_variants = random.randint(10,30) # <--- Knob for number of Chimeras variants
+chimeras_copy_count = 0
+for i in range(len(LIST_02)):
+    old_tuple = LIST_02[i]
+    copy = int(old_tuple[0])
+    new_copy_val = int(copy * 0.95)
+    LIST_02[i] = (new_copy_val, old_tuple[1])
+    chimeras_copy_count += ((5/100) * copy) #  <--- knob for Chimeras total counts (5% set here)
+
+portions = np.random.multinomial(chimeras_copy_count, [1 / chimeras_variants] * chimeras_variants) # distributing chimeras_copy_count into x portions that sums upto chimeras_copy_count
+
+while chimeras_variants > 0:
+    seq_01, seq_02 = random.sample(initial_lines, 2)
+    while len(seq_01) != len(seq_02):
+        seq_01, seq_02 = random.sample(initial_lines, 2)
+    pos = random.randrange(len(seq_01))
+    new_chimeras = seq_01[:pos] + seq_02[pos:]
+    chimeras_variants -= 1
+    CHIMERAS_LIST.append((portions[chimeras_variants],new_chimeras))
+
+
+with open(fr'{path}\pcr_final.txt',"w") as f:
+    f.write("count, sequence, length\n")
+    for item in LIST_02:
+        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+    for item in CHIMERAS_LIST:
+        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+    for item in LIST_03:
+        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+
+print(f"final file length: {len(LIST_02)} + {len(LIST_03)} + {len(CHIMERAS_LIST)}")
+
+with open(fr'{path}\pcr_final.txt') as f:
+    next(f)
+    rows = [line.strip().split(",") for line in f if line.strip()]
+    copy_count, _, _ = zip(*rows)
+    sum_copies_pcr_final = sum([int(x) for x in copy_count])
+
+sum_initial_copies_pcr = sum([int(x) for x in initial_copies])
+print(f"initial_copies_pcr: {sum_initial_copies_pcr}")
+print(f"sum_copies_pcr_final: {sum_copies_pcr_final}")
+print(f"Diff:{sum_initial_copies_pcr - sum_copies_pcr_final} ")
+
+
+os.remove(fr'{path}\pcr_complete.txt')
+os.remove(fr'{path}\pcr_complete_2.txt')
+os.remove(fr'{path}\pcr_CHANGED_POOL.txt')
+os.remove(fr'{path}\pcr_CHANGED_POOL_02.txt')
+os.remove(fr'{path}\pcr_pre_final.txt')
+
+
+
 
 if __name__ == "__main__":
     print("Done")

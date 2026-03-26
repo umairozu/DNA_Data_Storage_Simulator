@@ -312,7 +312,7 @@ class Error_simulation:
         else:
             sequence_indices = range(len(self.seq))
 
-        print(sequence_indices)
+        #print(sequence_indices)
 
         # original seq = TAGC
         # after deletion for instance it became "TA C"
@@ -327,7 +327,7 @@ class Error_simulation:
         combined_motifs = "|".join(motifs)
 
         motif_matcher = re.compile(combined_motifs)  # e.g; re.compile('ATCA|ATCG|GG|T')
-        print(motif_matcher)
+        #print(motif_matcher)
 
         # Now searching the sequence region specified for any matching motifs
         # storing all matched motifs string if any with their positions
@@ -349,7 +349,7 @@ class Error_simulation:
             chosen_match = random.choice(matches)
             chosen_base = chosen_match['base']
             chosen_span = [chosen_match['start'], chosen_match['end']]
-            print(f" Chosen match = {chosen_match['base']}, Chosen Span = {chosen_span}")
+            #print(f" Chosen match = {chosen_match['base']}, Chosen Span = {chosen_span}")
             #chosen_match = chosen_match['base']
 
             if type(pattern[chosen_base]) == dict:
