@@ -3,12 +3,9 @@ import random
 import re
 
 import numpy as np
-from fontTools.svgLib.path.parser import UPPERCASE
-
 from GC_content import gc_error_probability
 from Enzyme_Addition import primer_F, primer_R,orig_length,pF_length,pR_length
 from Error_module import Error_simulation
-
 
 err_rates = {
              "1": {"raw_rate": 0.000043, "substitution": 0.99, "deletion": 0.01, "insertion": 0}, #Taq
@@ -67,6 +64,11 @@ mutation_attributes = {
                               "substitution": {"pattern": {}}}
                         }
 
+BASE_DIR = fr'{os.getcwd()}\dna-fountain'
+os.makedirs(fr'{BASE_DIR}\pcr', exist_ok=True)
+STORAGE_DIR = fr'{os.getcwd()}\dna-fountain\storage'
+PCR_DIR = fr'{os.getcwd()}\dna-fountain\pcr'
+
 
 def amp_factor(eff_i):
     return 1 + eff_i
@@ -109,7 +111,7 @@ def seq_check(eff_i, sequence):
 BASE_DIR = fr'{os.getcwd()}\dna-fountain'
 
 # PCR pre-filtering --> removing non_specific amplicons as a cleanup for sequencing
-with open(fr'{BASE_DIR}\storage_file_1.txt') as f:
+with open(fr'{STORAGE_DIR}\storage_file_1.txt') as f:
     """
     #200823,AATGGTTTACCCATA
     #count = [200823], seq [AATGGTTTACCCATA]
@@ -149,13 +151,13 @@ for index in data:
         else:
             filtered_lines.append((count,seq))
 
-with open(fr'{BASE_DIR}\pcr_dropouts.txt', "w") as f:
+with open(fr'{PCR_DIR}\pcr_dropouts.txt', "w") as f:
     f.write("count, sequence, length\n")
     for c, s in dropouts:
         l = len(s)
         f.write(f"{c},{s},{l}\n")
 
-with open(fr'{BASE_DIR}\pcr_filtered.txt', "w") as f:
+with open(fr'{PCR_DIR}\pcr_filtered.txt', "w") as f:
     f.write("count, sequence, length\n")
     for c, s in filtered_lines:
         l = len(s)
@@ -165,7 +167,7 @@ with open(fr'{BASE_DIR}\pcr_filtered.txt', "w") as f:
 # PCR sampling
 sampling_frac = float(input("Enter PCR sampling fraction (in %age): ")) / 100
 
-with open(fr'{BASE_DIR}\pcr_filtered.txt') as f:
+with open(fr'{PCR_DIR}\pcr_filtered.txt') as f:
     next(f)
     data = []
     for line in f:
@@ -181,7 +183,7 @@ for index in data:
     bnd_choice = np.random.choice(bnd)
     index['count'] = bnd_choice
 
-with open(fr'{BASE_DIR}\pcr_sampled.txt', "w") as f:
+with open(fr'{PCR_DIR}\pcr_sampled.txt', "w") as f:
     f.write("sampled_count, sequence, length\n")
     for index in data:
         count = index['count']
@@ -199,7 +201,7 @@ max_yield = int(input("Enter the maximum pcr yield expected:")) # so new pool wi
 
 E0_i = 0.9  # initial efficiency
 """Calculating per oligo Efficiency in the sample based on [PRIMER BINDING, GC CONTENT] of the oligo"""
-with open(fr'{BASE_DIR}\pcr_sampled.txt') as f:
+with open(fr'{PCR_DIR}\pcr_sampled.txt') as f:
     next(f)
     data = []
     for line in f:
@@ -340,7 +342,7 @@ with open(fr'{BASE_DIR}\pcr_sampled.txt') as f:
                 break
 
 # Writing back the copy counts after PCR completion
-with open(fr'{BASE_DIR}\pcr_complete.txt', "w") as f:
+with open(fr'{PCR_DIR}\pcr_complete.txt', "w") as f:
     f.write("sampled_count, sequence, length, efficiency_Remaining\n")
     for index in data:
         count = index['count']
@@ -355,7 +357,7 @@ with open(fr'{BASE_DIR}\pcr_complete.txt', "w") as f:
 
 MUTATED_TEXT = []
 
-with open(fr'{BASE_DIR}\pcr_complete.txt') as f:
+with open(fr'{PCR_DIR}\pcr_complete.txt') as f:
     next(f)
     rows = [line.strip().split(",") for line in f if line.strip()]
     initial_copies, initial_lines, initial_length, eff = zip(*rows)
@@ -380,14 +382,14 @@ while count < VALVE:
     count += 1
 
 # giving each original oligo sequence 80% copy count, rest of the count will go to mutated variants and CHIMERAS
-with open(fr'{BASE_DIR}\pcr_complete_2.txt', "w") as f:
+with open(fr'{PCR_DIR}\pcr_complete_2.txt', "w") as f:
     f.write("sampled_count, sequence, length\n")
     for copy_count, line, length in zip(initial_copies, initial_lines,initial_length):
         UN_CHANGED_TEXT.append((int(int(copy_count) * 0.80), line))
         f.write(f"{int(int(copy_count) * 0.80)},{line},{length}\n")
 
 # giving each mutated sequence(sequences generated via Error_module.py) a 10% copy count of original sequence
-with open(fr'{BASE_DIR}\pcr_CHANGED_POOL.txt', "w") as f:
+with open(fr'{PCR_DIR}\pcr_CHANGED_POOL.txt', "w") as f:
     f.write("count, sequence, length\n")
     for copy_count, original_line, length in zip(initial_copies, initial_lines, initial_length):
         if original_line not in MUTATED_TEXT:
@@ -405,12 +407,12 @@ LIST = []
 for copy_count, line in zip(initial_copies, initial_lines):
     num_variant_line = random.randint(2,5)
     random_mut_num = random.randint(1,3) # <----- we can control the amount of SUBS we want
-    line = line.upper()
     copy_count_line = int(int(copy_count) * 0.10)
     #print(f"copy_count_line: {copy_count_line}")
     portions = np.random.multinomial(copy_count_line, [1 / num_variant_line] * num_variant_line) # distributes copy_count_line into x portions that sums upto the copy_count_line, GOOD!
     #print(f"Portions: {portions}")
     while num_variant_line > 0:
+        line = line.upper()
         for i in range(0, random_mut_num + 1):
             random_base = random.choice(['A', 'G', 'C', 'T'])
             pos = random.randrange(len(line))
@@ -426,7 +428,7 @@ CHANGED_TEXT = [] # Mutated oligos with 10% of initial count
 UN_CHANGED_TEXT = [] # original oligo with 80% of initial count
 UN_CHANGED_TEXT_02 = [] # if not Mutated, 10% of initial count back to original
 """
-with open(fr'{BASE_DIR}\pcr_pre_final.txt', "w") as f:
+with open(fr'{PCR_DIR}\pcr_pre_final.txt', "w") as f:
     f.write("count, sequence, length\n")
     for item in LIST:
         f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
@@ -442,7 +444,7 @@ with open(fr'{BASE_DIR}\pcr_pre_final.txt', "w") as f:
 # DEFAULT: Chimeras are 5% of the total pcr reads in our simulator, Change the knob value below to increase/decrease their quantity
 LIST_02 = []
 LIST_03 = []
-with open(fr'{BASE_DIR}\pcr_pre_final.txt') as f:
+with open(fr'{PCR_DIR}\pcr_pre_final.txt') as f:
     next(f)
     rows = [line.strip().split(",") for line in f if line.strip()]
     copy_count, lines, _ = zip(*rows)
@@ -477,7 +479,7 @@ while chimeras_variants > 0:
     CHIMERAS_LIST.append((portions[chimeras_variants],new_chimeras))
 
 
-with open(fr'{BASE_DIR}\pcr_final.txt', "w") as f:
+with open(fr'{PCR_DIR}\pcr_final.txt', "w") as f:
     f.write("count, sequence, length\n")
     for item in LIST_02:
         f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
@@ -488,7 +490,7 @@ with open(fr'{BASE_DIR}\pcr_final.txt', "w") as f:
 
 print(f"final file length: {len(LIST_02)} + {len(LIST_03)} + {len(CHIMERAS_LIST)}")
 
-with open(fr'{BASE_DIR}\pcr_final.txt') as f:
+with open(fr'{PCR_DIR}\pcr_final.txt') as f:
     next(f)
     rows = [line.strip().split(",") for line in f if line.strip()]
     copy_count, _, _ = zip(*rows)

@@ -46,6 +46,11 @@ mutation_attributes = {
 
                         }
 
+
+BASE_DIR = fr'{os.getcwd()}\dna-fountain'
+os.makedirs(fr'{BASE_DIR}\synthesis', exist_ok=True)
+SYNTHESIS_DIR = fr'{os.getcwd()}\dna-fountain\synthesis'
+
 def copy_distribution(avg_copy_oligo=100e6, k=4):
     # k is the divergence parameter
     min_copy_count = 1  # if 0, then we are allowing dropouts
@@ -66,7 +71,7 @@ MUTATED_TEXT = []
 if __name__ == "__main__":
     BASE_DIR = fr'{os.getcwd()}\dna-fountain'
 
-    with open(fr'{BASE_DIR}\turkish_anthem.tar.gz.dna_order.txt') as f:
+    with open(fr'{BASE_DIR}\original_order_file.txt') as f:
         initial_lines = [line.strip() for line in f if line.strip()]
         seq_objs = [Error_simulation(seq, "synthesis", attribute = mutation_attributes["3"],
                                      error_rate = err_rates["3"])
@@ -74,30 +79,31 @@ if __name__ == "__main__":
                     ]
 
     count = 1
-    while count < 15:
+    VALVE = 15
+    while count < VALVE:
         MUTATED_TEXT.clear()
         for sE in seq_objs:
             #sE.reset_visited() # See important Notice for info
             sE.run_mutations()
             MUTATED_TEXT.append(sE.seq)
 
-        with open(fr'{BASE_DIR}\synthesis_file_0.txt', "w") as f:
+        with open(fr'{SYNTHESIS_DIR}\synthesis_file_0.txt', "w") as f:
             f.write("\n".join(MUTATED_TEXT) + "\n")
         count += 1
 
 
     NEW = []
-    with open(fr'{BASE_DIR}\synthesis_file_0.txt') as f:
+    with open(fr'{SYNTHESIS_DIR}\synthesis_file_0.txt') as f:
         for line in f:
             clean_lines = line.split()[0]
             NEW.append(clean_lines)
 
-    with open(fr'{BASE_DIR}\synthesis_file_1.txt', "w") as f:
+    with open(fr'{SYNTHESIS_DIR}\synthesis_file_1.txt', "w") as f:
         f.write("\n".join(NEW) + "\n")
 
 
     #file read for copy:
-    with open(fr'{BASE_DIR}\synthesis_file_1.txt') as f:
+    with open(fr'{SYNTHESIS_DIR}\synthesis_file_1.txt') as f:
         lines = f.readlines()
 
 
@@ -107,7 +113,7 @@ if __name__ == "__main__":
         copies.append(oligo_copies)
 
 
-    with open(fr'{BASE_DIR}\synthesis_file_2.txt', "w") as f:
+    with open(fr'{SYNTHESIS_DIR}\synthesis_file_2.txt', "w") as f:
         for copy, line in zip(copies, lines):
             f.write(f"{copy},{line}")
 

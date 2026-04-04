@@ -12,7 +12,11 @@ SEC_PER_YEAR = 365 * 24 * 3600
 
 xlsx = "RawData.xlsx"
 sim = Arrhenius_decay.from_xlsx(xlsx)
+
 BASE_DIR = fr'{os.getcwd()}\dna-fountain'
+os.makedirs(fr'{BASE_DIR}\storage', exist_ok=True)
+SYNTHESIS_DIR = fr'{os.getcwd()}\dna-fountain\synthesis'
+STORAGE_DIR = fr'{os.getcwd()}\dna-fountain\storage'
 
 def survival_distribution(copy_count, temp_C, encapsulated, week):
     remaining_frac = Arrhenius_decay.remaining_dna_frac(sim, temp_C, encapsulated, week)
@@ -215,7 +219,7 @@ if __name__ == "__main__":
 
     }
 
-    with open(fr'{BASE_DIR}\synthesis_file_2.txt') as f:
+    with open(fr'{SYNTHESIS_DIR}\synthesis_file_2.txt') as f:
         initial_lines = [line.split(",")[1].strip() for line in f if line.strip()]
         f.seek(0)
         initial_copies = [line.split(",")[0].strip() for line in f if line.strip()]
@@ -223,9 +227,9 @@ if __name__ == "__main__":
                                      error_rate = err_rates["15"])
                     for seq in initial_lines
                     ]
-
+    VALVE = 3
     count = 1
-    while count < 3: # adjust the exit condition
+    while count < VALVE: # adjust the exit condition
         MUTATED_TEXT.clear()
         for sE in seq_objs:
             #sE.reset_visited() # See important Notice for info
@@ -238,17 +242,17 @@ if __name__ == "__main__":
         MUTATED_COPY_COUNT.append(survival_distribution(int(copy) ,input_temp_C,input_encapsulation, input_weeks))
 
     # Replacing copy count and mutated lines in file after degradation
-    with open(fr'{BASE_DIR}\storage_file_0.txt', "w") as f:
+    with open(fr'{STORAGE_DIR}\storage_file_0.txt', "w") as f:
         for copy, line in zip(MUTATED_COPY_COUNT,MUTATED_TEXT):
             f.write(f"{copy:.0f},{line}\n")
 
     FRAGMENT_COUNT = 0
 
     # Removing spaces in a line and making it shorter instead of throwing the line away
-    with open(fr'{BASE_DIR}\storage_file_0.txt') as f:
+    with open(fr'{STORAGE_DIR}\storage_file_0.txt') as f:
         MUTATED_TEXT = [line.split(",")[1].replace(" ","").strip() for line in f if line.strip()]
 
-    with open(fr'{BASE_DIR}\storage_file_1.txt', "w") as f:
+    with open(fr'{STORAGE_DIR}\storage_file_1.txt', "w") as f:
         for copy, line in zip(MUTATED_COPY_COUNT,MUTATED_TEXT):
             f.write(f"{copy:.0f},{line}\n")
 

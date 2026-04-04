@@ -22,8 +22,8 @@ from Enzyme_Addition import pF_length, pR_length, payload_length
 from Error_module import Error_simulation
 import Levenshtein
 from Bio import Align
+from Bio.Seq import Seq
 
-BASE_DIR = fr'{os.getcwd()}\dna-fountain'
 
 err_rates = {"1": {"raw_rate": 0.0021, "substitution": 0.81, "deletion": 0.0024, "insertion": 0.0013},
              "2": {"raw_rate": 0.0032, "substitution": 0.79, "deletion": 0.0018, "insertion": 0.0011},
@@ -50,6 +50,12 @@ mutation_attributes = {"1": {"deletion": {"position": {"random": 1},
                              "insertion": {"position": {"homopolymer": 0.46, "random": 0.54},
                                            "pattern": {"A": 0.35, "T": 0.35, "C": 0.15, "G": 0.15}},
                              "substitution": {"pattern": {"TAG": "TGG", "TAC": "TGC"}}}}
+
+BASE_DIR = fr'{os.getcwd()}\dna-fountain'
+os.makedirs(fr'{BASE_DIR}\sequencing', exist_ok=True)
+PCR_DIR = fr'{os.getcwd()}\dna-fountain\pcr'
+SEQ_DIR = fr'{os.getcwd()}\dna-fountain\sequencing'
+
 
 
 def get_clean_segment(parent_aligned, child_aligned, start_pos, target_len):
@@ -91,16 +97,6 @@ if __name__ == "__main__":
         method = "1"
         print("Default sequencing method chosen [illumina single-end sequencing]")
 
-
-
-    with open(fr'{BASE_DIR}\pcr_final.txt') as f:
-        rows = [line.strip().split(",") for line in f if line.strip()]
-        copy_count, lines, length = zip(*rows)
-        seq_objs = [Error_simulation(seq, "sequencing", attribute = mutation_attributes[mode],
-                                     error_rate = err_rates[method])
-                    for seq in lines
-                    ]
-
     # sampling for sequencing
     while True:
         user_input = input("Enter sequencing sampling fraction (0-100%): \n")
@@ -133,7 +129,7 @@ if __name__ == "__main__":
 
 
     POOL_COUNT = 0 # total molecule in input pcr file
-    with open(fr'{BASE_DIR}\pcr_final.txt') as f:
+    with open(fr'{PCR_DIR}\pcr_final.txt') as f:
         next(f)
         data = []
         for line in f:
@@ -142,14 +138,6 @@ if __name__ == "__main__":
                 POOL_COUNT += int(count)
                 data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip() })
 
-    #Sequence input pool
-    with open(fr'{BASE_DIR}\sequencing_sampled_pool.txt', "w") as f:
-        f.write("count, sequence, length\n")
-        for index in data:
-            count = index['count']
-            seq = index['seq']
-            length = index['length']
-            f.write(f"{int(SAMPLING_FRAC * count)},{seq},{length}\n")
 
     #Collecting original oligo's given for order
     ORIGINAL_ORDER_OLIGOS = []
@@ -158,26 +146,38 @@ if __name__ == "__main__":
             ORIGINAL_ORDER_OLIGOS.append(line)
 
     #Collecting best matching Parent oligo given a sequence
-    PARENT_CHILD = []
+    PARENT_CHILD_INFO = []
     for item in data:
-        count = index['count']
-        seq = index['seq']
-        length = index['length']
+        count = item['count']
+        seq = item['seq']
+        length = item['length']
 
         best_match = min(ORIGINAL_ORDER_OLIGOS, key = lambda x: Levenshtein.distance(seq,x))
         similarity = Levenshtein.ratio(seq, best_match)
 
-        PARENT_CHILD.append((best_match.strip(),seq.strip()))
+        PARENT_CHILD_INFO.append((count, best_match.strip(), seq.strip(), similarity))
+        #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        # [(child's copy count, parent, child, parent-child similarity score)]
+
         #print(f"seq 0: {seq} \nseq 1: {best_match}\nSimilarity: {similarity * 100:.2f}%")
+
+    with open(fr'{SEQ_DIR}\PARENT_CHILD_INFO.txt',"w") as f:
+        f.write("child copy count, parent, child\n")
+        for item in PARENT_CHILD_INFO:
+            f.write(f"{item}\n")
 
     parent_pF_length = pF_length
     parent_insert_length = payload_length
     parent_pR_length = pR_length
 
-    for item in PARENT_CHILD:
+    #Calculating child's pF, pR and insert given a parent --> for illumina SE and PE sequencing
+    CHILD_INFO = []
+    for item in PARENT_CHILD_INFO:
 
-        parent_seq = item[0]
-        child_seq = item[1]
+        child_copy = item[0]
+        parent_seq = item[1]
+        child_seq = item[2]
+        parent_child_score = item[3]
 
         aligner = Align.PairwiseAligner()
         aligner.mode = 'global'
@@ -190,27 +190,155 @@ if __name__ == "__main__":
         child = list(alignment_lines[0])
 
         child_pF, pos1 = get_clean_segment(parent, child, 0, parent_pF_length)
-        print(f"Child_pF: {child_pF}")
+        #print(f"Child_pF: {child_pF}")
 
         child_insert, pos2 = get_clean_segment(parent, child, pos1, parent_insert_length)
-        print(f"Child_insert: {child_insert}")
+        #print(f"Child_insert: {child_insert}")
 
         child_pR = "".join(child[pos2:]).replace('-', '')
-        print(f"Child_pR: {child_pR}")
-        print("-----......-----")
+        #print(f"Child_pR: {child_pR}")
 
-    """    count = 1
+        CHILD_INFO.append((parent_seq,child_copy,child_pF,child_insert,child_pR, parent_child_score))
+        #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        # [(parent, child's copy count, child's pF, child's insert, child's pR, parent_child_score)]
+
+        #print("-----......-----")
+
+
+    with open(fr'{SEQ_DIR}\CHILD_INFO.txt',"w") as f:
+        f.write("parent, child copy count, child pF, child insert, child pR, score\n")
+        for item in CHILD_INFO:
+            f.write(f"{item}\n")
+
+    #Quality Check on child: 1) Alignment score > 0.80
+    # (2) parent-child length difference with +- 10 [optional] ---> consider lengths of mutated seqs, variants and chimeras,
+    # they might be filtered, so removing them not so good unless they are very short as compared to parent!!
+    LIST_01 = []
+    alignment_THRESHOLD = 0.80
+    len_VALVE = 10
+    with open(fr'{SEQ_DIR}\CHILD_INFO.txt') as f:
+        next(f)
+        for item in CHILD_INFO:
+            child_seq = item[3] # child's insert
+            score = float(item[5])
+            #if (score > 0.80) and (abs(payload_length - len(child_seq)) < 5):(MUCH STRICTER)
+            if (score > alignment_THRESHOLD) and (abs(payload_length - len(child_seq)) < len_VALVE): # parent-child alignment is okay!!
+                LIST_01.append(item)
+            else:
+                pass
+
+    with open(fr'{SEQ_DIR}\pre_sequencing_filter.txt',"w") as f:
+        f.write("parent, child copy count, child pF, child insert, child pR, score\n")
+        for item in LIST_01:
+            f.write(f"{item}\n")
+
+    #print(len(data))
+    #print(len(PARENT_CHILD_INFO))
+    #print(len(new_LIST))
+
+
+    #Sequence input pool --> after sampling
+    LIST_02 = []
+    with open(fr'{SEQ_DIR}\sequencing_sampled_pool.txt', "w") as f:
+        f.write("parent, child copy count, child pF, child insert, child pR, score, length\n")
+        for item in LIST_01:
+            parent = item[0]
+            child_count = item[1]
+            child_pF = item[2]
+            child_insert = item[3]
+            child_pR = item[4]
+            score = item[5]
+
+            seq = child_pF + child_insert + child_pR
+            length = len(seq)
+            count = int(SAMPLING_FRAC * child_count)
+
+            LIST_02.append((parent,count,child_pF,child_insert,child_pR,length))
+            f.write(f"{parent},{count},{child_pF},{child_insert},{child_pR},{length}\n")
+
+    # generating sequencing reads for the chosen method
+    READ_SE = []
+    READ_PE = []
+    with open(fr'{SEQ_DIR}\sequencing_sampled_pool.txt') as f:
+        next(f)
+        for item in LIST_02:
+
+            pF = item[2]
+            insert = item[3]
+            pR = item[4]
+            sequence = pF + insert + pR
+
+            insert_length = len(insert)
+            if mode == '1':
+                if method == '1': # illumina's SE sequencing
+                    if READ_LENGTH > insert_length:
+                        read1 = (insert + pR)[:READ_LENGTH]
+                    elif READ_LENGTH == insert_length:
+                        read1 = insert
+                    else:
+                        read1 = insert[:READ_LENGTH]
+                    READ_SE.append(read1)
+                else:           # illumina's PE sequencing
+                    if READ_LENGTH > insert_length:
+                        read1 = (insert + pR)[:READ_LENGTH]
+                        read2 = str(Seq((pF + insert)[-READ_LENGTH:]).reverse_complement())
+                    elif READ_LENGTH == insert_length:
+                        read1 = insert
+                        read2 = str(Seq(insert).reverse_complement())
+                    else:
+                        read1 = insert[:READ_LENGTH]
+                        read2 = str(Seq(insert[-READ_LENGTH:]).reverse_complement())
+                    READ_SE.append(read1)
+                    READ_PE.append(read2)
+
+    # Writing reads back to their respective fastq files:
+    chosen_file = ''
+    if method == '1': # For READ_SE:
+        with open(fr'{SEQ_DIR}\Read_SE.txt', "w") as file:
+            for read_id, read in enumerate(READ_SE):
+                file.write(f"@read{read_id}\n{read}\n+\n!!!!!!\n")
+        chosen_file = fr'{SEQ_DIR}\Read_SE.txt'
+    elif method == '2': # For READ_PE:
+        with open(fr'{SEQ_DIR}\Read_PE.txt', "w") as file:
+            read_id = 1
+            for r1, r2 in zip(READ_SE, READ_PE):
+                file.write(f"@read{read_id}/1\n{r1}\n+\n!!!!!!\n@read{read_id}/2\n{r2}\n+\n!!!!!!\n")
+                read_id += 1
+        chosen_file = fr'{SEQ_DIR}\Read_PE.txt'
+
+    print(f"Length SE: {len(READ_SE)}")
+    print(f"Length PE: {len(READ_PE)}")
+
+    # Making sequencing object + Applying sequencing errors
+    with open(chosen_file) as f:
+        lines = [line.strip() for i, line in enumerate(f) if i % 4 == 1]
+        seq_objs = [Error_simulation(seq, "sequencing", attribute = mutation_attributes[mode],
+                                     error_rate = err_rates[method])
+                    for seq in lines
+                    ]
+
     VALVE = 10
-    while count < VALVE:
-        MUTATED_TEXT.clear()
-        for sE in seq_objs:
-            #sE.reset_visited() # See important Notice for info
-            sE.run_mutations()
-            MUTATED_TEXT.append(sE.seq)
+    filename = "sequencing_SE.fastq" if method == '1' else "sequencing_PE.fastq"
+    filepath = fr'{SEQ_DIR}\{filename}'
+    if mode == '1':
+        with open(filepath, "w") as f:
+            for _ in range(1, VALVE):
+                MUTATED_TEXT = []
+                for sE in seq_objs:
+                    sE.run_mutations()
+                    MUTATED_TEXT.append(sE.seq)
 
-        with open(fr'{os.getcwd()}\dna-fountain\TODO', "w") as f:
-            f.write("\n".join(MUTATED_TEXT) + "\n")
-        count += 1"""
+            # Writing fast.q file with mutated reads
+            if method == '1':
+                for read_id, read in enumerate(MUTATED_TEXT):
+                    f.write(f"@read{read_id}\n{read}\n+\n!!!!!!\n")
+            else:
+                read_id = 1
+                for i in range(0, len(MUTATED_TEXT), 2):
+                    read1 = MUTATED_TEXT[i]
+                    read2 = MUTATED_TEXT[i + 1]
+                    f.write(f"@read{read_id}/1\n{read1}\n+\n!!!!!!\n@read{read_id}/2\n{read2}\n+\n!!!!!!\n")
+                    read_id += 1
 
 
     print("Sequencing.py run")
