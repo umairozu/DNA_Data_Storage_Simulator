@@ -12,6 +12,7 @@ SEC_PER_YEAR = 365 * 24 * 3600
 
 xlsx = "RawData.xlsx"
 sim = Arrhenius_decay.from_xlsx(xlsx)
+BASE_DIR = fr'{os.getcwd()}\dna-fountain'
 
 def survival_distribution(copy_count, temp_C, encapsulated, week):
     remaining_frac = Arrhenius_decay.remaining_dna_frac(sim, temp_C, encapsulated, week)
@@ -214,7 +215,7 @@ if __name__ == "__main__":
 
     }
 
-    with open(fr'{os.getcwd()}\dna-fountain\synthesis_file_2.txt') as f:
+    with open(fr'{BASE_DIR}\synthesis_file_2.txt') as f:
         initial_lines = [line.split(",")[1].strip() for line in f if line.strip()]
         f.seek(0)
         initial_copies = [line.split(",")[0].strip() for line in f if line.strip()]
@@ -237,17 +238,19 @@ if __name__ == "__main__":
         MUTATED_COPY_COUNT.append(survival_distribution(int(copy) ,input_temp_C,input_encapsulation, input_weeks))
 
     # Replacing copy count and mutated lines in file after degradation
-    with open(fr'{os.getcwd()}\dna-fountain\storage_file_0.txt', "w") as f:
+    with open(fr'{BASE_DIR}\storage_file_0.txt', "w") as f:
         for copy, line in zip(MUTATED_COPY_COUNT,MUTATED_TEXT):
             f.write(f"{copy:.0f},{line}\n")
 
     FRAGMENT_COUNT = 0
 
     # Removing spaces in a line and making it shorter instead of throwing the line away
-    with open(fr'{os.getcwd()}\dna-fountain\storage_file_0.txt') as f:
+    with open(fr'{BASE_DIR}\storage_file_0.txt') as f:
         MUTATED_TEXT = [line.split(",")[1].replace(" ","").strip() for line in f if line.strip()]
 
-    with open(fr'{os.getcwd()}\dna-fountain\storage_file_1.txt', "w") as f:
+    with open(fr'{BASE_DIR}\storage_file_1.txt', "w") as f:
         for copy, line in zip(MUTATED_COPY_COUNT,MUTATED_TEXT):
             f.write(f"{copy:.0f},{line}\n")
 
+    print("Storage.py run")
+    """os.remove(fr'{BASE_DIR}\storage_file_0.txt')"""

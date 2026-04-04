@@ -17,7 +17,11 @@ mutation attributes origin
 
 """
 import os
+
+from Enzyme_Addition import pF_length, pR_length, payload_length
 from Error_module import Error_simulation
+import Levenshtein
+from Bio import Align
 
 BASE_DIR = fr'{os.getcwd()}\dna-fountain'
 
@@ -48,21 +52,40 @@ mutation_attributes = {"1": {"deletion": {"position": {"random": 1},
                              "substitution": {"pattern": {"TAG": "TGG", "TAC": "TGC"}}}}
 
 
+def get_clean_segment(parent_aligned, child_aligned, start_pos, target_len):
+    valid_chars = 0
+    chars_consumed = 0
+
+    for i in range(start_pos, len(parent_aligned)):
+        if valid_chars == target_len:
+            break
+
+        chars_consumed += 1
+        if parent_aligned[i] != '-':
+            valid_chars += 1
+
+    end_pos = start_pos + chars_consumed
+
+    clean_segment = "".join(child_aligned[start_pos:end_pos]).replace('-', '')
+
+    return clean_segment, end_pos
+
+
 MUTATED_TEXT = []
 
 if __name__ == "__main__":
 
     mode = input("Enter Sequencing Mode:  --help [1. Illumina, 2. PacBio, 3. Nanopore ]\n")
-    #assert mode in ["1","2","3"]
+    assert mode in ["1","2","3"]
     if mode == "1":
         method = input("Enter method for illumina sequencing:  --help [1. Single-end, 2. Paired-end]\n")
-        #assert method in ["1", "2"]
+        assert method in ["1", "2"]
     elif mode == "2":
         method = input("Enter method for PacBio sequencing:  --help [3. CCS, 4. Subread]\n")
-        #assert method in ["3", "4"]
+        assert method in ["3", "4"]
     elif mode == "3":
         method = input("Enter method for Nanopore sequencing:  --help [5. 1D, 6. 2D]\n")
-        #assert method in ["5", "6"]
+        assert method in ["5", "6"]
     else:
         mode = "1"
         method = "1"
@@ -78,55 +101,114 @@ if __name__ == "__main__":
                     for seq in lines
                     ]
 
-# sampling for sequencing
-while True:
-    user_input = input("Enter sequencing sampling fraction (0-100%): \n")
+    # sampling for sequencing
+    while True:
+        user_input = input("Enter sequencing sampling fraction (0-100%): \n")
 
-    try:
-        value = float(user_input)
-        if 0 <= value <= 100:
-            sampling_frac = value / 100
-            break
-        else:
-            print("Please enter a number between 0 and 100.")
-    except ValueError:
-        print("Invalid input. Please enter a numerical value (e.g., 5.5).")
+        try:
+            value = float(user_input)
+            if 0 <= value <= 100:
+                SAMPLING_FRAC = value / 100
+                break
+            else:
+                print("Please enter a number between 0 and 100.")
+        except ValueError:
+            print("Invalid input. Please enter a numerical value (e.g., 5.5).")
 
-# sequencing depth input
-while True:
-    user_input_input = input("Enter a number for sequencing depth (0-100%): \n")
-
-    try:
-        value = float(user_input)
-        if 0 <= value <= 100:
-            sequencing_depth = value / 100
-            break
-        else:
-            print("Please enter a number between 0 and 100.")
-    except ValueError:
-        print("Invalid input. Please enter a numerical value (e.g., 5.5).")
-
-
-
-with open(fr'{BASE_DIR}\pcr_final.txt') as f:
-    next(f)
-    data = []
-    for line in f:
-        if "," in line.strip():
-            count, seq, length = line.split(",")
-            data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip() })
+    # target_reads & READ_LENGTH input
+    while True:
+        user_input02 = input("Enter a number for total reads required (e.g 100K, 10M etc): \n")
+        user_input03 = input("Enter a number for Read Length (e.g 120, 150 etc): \n")
+        try:
+            value02 = int(user_input02)
+            value03 = int(user_input03)
+            if value02 and value03:
+                TARGET_READS = value02
+                READ_LENGTH = value03
+                break
+            else:
+                print("Please enter a number greater than 0.")
+        except ValueError:
+            print("Invalid input. Please enter a numerical value (e.g., 5.5).")
 
 
+    POOL_COUNT = 0 # total molecule in input pcr file
+    with open(fr'{BASE_DIR}\pcr_final.txt') as f:
+        next(f)
+        data = []
+        for line in f:
+            if "," in line.strip():
+                count, seq, length = line.split(",")
+                POOL_COUNT += int(count)
+                data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip() })
+
+    #Sequence input pool
+    with open(fr'{BASE_DIR}\sequencing_sampled_pool.txt', "w") as f:
+        f.write("count, sequence, length\n")
+        for index in data:
+            count = index['count']
+            seq = index['seq']
+            length = index['length']
+            f.write(f"{int(SAMPLING_FRAC * count)},{seq},{length}\n")
+
+    #Collecting original oligo's given for order
+    ORIGINAL_ORDER_OLIGOS = []
+    with open(fr'{BASE_DIR}\original_order_file.txt') as file:
+        for line in file:
+            ORIGINAL_ORDER_OLIGOS.append(line)
+
+    #Collecting best matching Parent oligo given a sequence
+    PARENT_CHILD = []
+    for item in data:
+        count = index['count']
+        seq = index['seq']
+        length = index['length']
+
+        best_match = min(ORIGINAL_ORDER_OLIGOS, key = lambda x: Levenshtein.distance(seq,x))
+        similarity = Levenshtein.ratio(seq, best_match)
+
+        PARENT_CHILD.append((best_match.strip(),seq.strip()))
+        #print(f"seq 0: {seq} \nseq 1: {best_match}\nSimilarity: {similarity * 100:.2f}%")
+
+    parent_pF_length = pF_length
+    parent_insert_length = payload_length
+    parent_pR_length = pR_length
+
+    for item in PARENT_CHILD:
+
+        parent_seq = item[0]
+        child_seq = item[1]
+
+        aligner = Align.PairwiseAligner()
+        aligner.mode = 'global'
+        alignments = aligner.align(child_seq, parent_seq)
+
+        best_match = alignments[0]
+
+        alignment_lines = str(best_match).split("\n")
+        parent = list(alignment_lines[2])
+        child = list(alignment_lines[0])
+
+        child_pF, pos1 = get_clean_segment(parent, child, 0, parent_pF_length)
+        print(f"Child_pF: {child_pF}")
+
+        child_insert, pos2 = get_clean_segment(parent, child, pos1, parent_insert_length)
+        print(f"Child_insert: {child_insert}")
+
+        child_pR = "".join(child[pos2:]).replace('-', '')
+        print(f"Child_pR: {child_pR}")
+        print("-----......-----")
 
     """    count = 1
-    while count < 100:
+    VALVE = 10
+    while count < VALVE:
         MUTATED_TEXT.clear()
         for sE in seq_objs:
             #sE.reset_visited() # See important Notice for info
             sE.run_mutations()
             MUTATED_TEXT.append(sE.seq)
 
-        with open(fr'{os.getcwd()}\dna-fountain\turkish_anthem.tar.gz.dna_order.txt', "w") as f:
+        with open(fr'{os.getcwd()}\dna-fountain\TODO', "w") as f:
             f.write("\n".join(MUTATED_TEXT) + "\n")
         count += 1"""
 

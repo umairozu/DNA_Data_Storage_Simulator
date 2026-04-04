@@ -129,8 +129,18 @@ for index in data:
     count = index['count']
     seq = index['seq']
     if len(seq) == orig_length:
-        if seq[:pF_length] != primer_F or seq[-pR_length:] != primer_R:
-            dropouts.append((count,seq))
+        """if seq[:pF_length] != primer_F or seq[-pR_length:] != primer_R:
+            dropouts.append((count,seq))""" # old code
+        num_mismatch = 0
+        pF = [seq[:pF_length]]
+        pR = [seq[-pR_length:]]
+        primer_F = [primer_F]
+        primer_R = [primer_R]
+        for char1, char2 in zip(pF,primer_F):
+            if char1 != char2:
+                num_mismatch += 1
+        if num_mismatch > 4:
+            dropouts.append((count, seq))
         else:
             filtered_lines.append((count,seq))
     else:
@@ -360,7 +370,8 @@ UN_CHANGED_TEXT = []
 UN_CHANGED_TEXT_02 = []
 
 count = 1
-while count < 30:
+VALVE = 30 # Knob for mutations
+while count < VALVE:
     MUTATED_TEXT.clear()
     for sE in seq_objs:
         #sE.reset_visited() # See important Notice for info
@@ -378,12 +389,13 @@ with open(fr'{BASE_DIR}\pcr_complete_2.txt', "w") as f:
 # giving each mutated sequence(sequences generated via Error_module.py) a 10% copy count of original sequence
 with open(fr'{BASE_DIR}\pcr_CHANGED_POOL.txt', "w") as f:
     f.write("count, sequence, length\n")
-    for copy_count, line, length in zip(initial_copies, initial_lines, initial_length):
-        if line not in MUTATED_TEXT:
-            CHANGED_TEXT.append((int(int(copy_count) * 0.10),line))
+    for copy_count, original_line, length in zip(initial_copies, initial_lines, initial_length):
+        if original_line not in MUTATED_TEXT:
+            mutated_line = original_line
+            CHANGED_TEXT.append((int(int(copy_count) * 0.10),mutated_line)) # CORRECTIONNNNNN , handle deletion case
             f.write(f"{int(int(copy_count) * 0.10)},{line},{length}\n")
         else:
-            UN_CHANGED_TEXT_02.append((int(int(copy_count) * 0.10),line)) # if a sequence is not mutated, adding the 10% count back to the original sequence
+            UN_CHANGED_TEXT_02.append((int(int(copy_count) * 0.10),original_line)) # if a sequence is not mutated, adding the 10% count back to the original sequence
 
 
 # Making different variants per oligo, distributing 10% copy_count

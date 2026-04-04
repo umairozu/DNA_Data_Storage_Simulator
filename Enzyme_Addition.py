@@ -69,6 +69,7 @@ _oligos = build_oligos(_payloads)
 orig_length = len(_oligos[0]) if _oligos else 0
 pF_length = len(primer_F)
 pR_length = len(primer_R)
+payload_length = orig_length - (pF_length + pR_length)
 
 
 # --------------------
