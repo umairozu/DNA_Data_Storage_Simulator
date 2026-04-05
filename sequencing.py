@@ -18,6 +18,8 @@ mutation attributes origin
 """
 import os
 
+import numpy as np
+
 from Enzyme_Addition import pF_length, pR_length, payload_length
 from Error_module import Error_simulation
 import Levenshtein
@@ -256,12 +258,37 @@ if __name__ == "__main__":
             LIST_02.append((parent,count,child_pF,child_insert,child_pR,length))
             f.write(f"{parent},{count},{child_pF},{child_insert},{child_pR},{length}\n")
 
+
+    # LIST_02 currently stores:
+    # (parent, sampled_count, child_pF, child_insert, child_pR, length)
+    templates = []
+    weights = []
+
+    for item in LIST_02:
+        sampled_count = int(item[1])
+        if sampled_count <= 0:
+            continue
+
+        pF = item[2]
+        insert = item[3]
+        pR = item[4]
+
+        templates.append((pF, insert, pR))
+        weights.append(sampled_count)
+
+    weights = np.array(weights, dtype=float)
+    weights = weights / weights.sum()
+
+    # allocating how many reads each template gets
+    read_allocations = np.random.multinomial(TARGET_READS, weights)
+
+
     # generating sequencing reads for the chosen method
     READ_SE = []
     READ_PE = []
     with open(fr'{SEQ_DIR}\sequencing_sampled_pool.txt') as f:
         next(f)
-        for item in LIST_02:
+        for item, n_reads in zip(LIST_02, read_allocations):
 
             pF = item[2]
             insert = item[3]
@@ -269,27 +296,28 @@ if __name__ == "__main__":
             sequence = pF + insert + pR
 
             insert_length = len(insert)
-            if mode == '1':
-                if method == '1': # illumina's SE sequencing
-                    if READ_LENGTH > insert_length:
-                        read1 = (insert + pR)[:READ_LENGTH]
-                    elif READ_LENGTH == insert_length:
-                        read1 = insert
-                    else:
-                        read1 = insert[:READ_LENGTH]
-                    READ_SE.append(read1)
-                else:           # illumina's PE sequencing
-                    if READ_LENGTH > insert_length:
-                        read1 = (insert + pR)[:READ_LENGTH]
-                        read2 = str(Seq((pF + insert)[-READ_LENGTH:]).reverse_complement())
-                    elif READ_LENGTH == insert_length:
-                        read1 = insert
-                        read2 = str(Seq(insert).reverse_complement())
-                    else:
-                        read1 = insert[:READ_LENGTH]
-                        read2 = str(Seq(insert[-READ_LENGTH:]).reverse_complement())
-                    READ_SE.append(read1)
-                    READ_PE.append(read2)
+            for _ in range(n_reads):
+                if mode == '1':
+                    if method == '1': # illumina's SE sequencing
+                        if READ_LENGTH > insert_length:
+                            read1 = (insert + pR)[:READ_LENGTH]
+                        elif READ_LENGTH == insert_length:
+                            read1 = insert
+                        else:
+                            read1 = insert[:READ_LENGTH]
+                        READ_SE.append(read1)
+                    else:           # illumina's PE sequencing
+                        if READ_LENGTH > insert_length:
+                            read1 = (insert + pR)[:READ_LENGTH]
+                            read2 = str(Seq((pF + insert)[-READ_LENGTH:]).reverse_complement())
+                        elif READ_LENGTH == insert_length:
+                            read1 = insert
+                            read2 = str(Seq(insert).reverse_complement())
+                        else:
+                            read1 = insert[:READ_LENGTH]
+                            read2 = str(Seq(insert[-READ_LENGTH:]).reverse_complement())
+                        READ_SE.append(read1)
+                        READ_PE.append(read2)
 
     # Writing reads back to their respective fastq files:
     chosen_file = ''
@@ -305,9 +333,30 @@ if __name__ == "__main__":
                 file.write(f"@read{read_id}/1\n{r1}\n+\n!!!!!!\n@read{read_id}/2\n{r2}\n+\n!!!!!!\n")
                 read_id += 1
         chosen_file = fr'{SEQ_DIR}\Read_PE.txt'
+    else:
+        raise ValueError("Unsupported method")
 
     print(f"Length SE: {len(READ_SE)}")
     print(f"Length PE: {len(READ_PE)}")
+
+
+    # for fixed quality score
+    """
+    def phred_char(q=30):
+        return chr(q + 33)  # Q30 -> '?'
+
+    def qual_string(s, q=30):
+        return phred_char(q) * len(s)
+    """
+
+    def quality_profile(read_length, q_start=35, q_end=28):
+        if read_length == 1:
+            return chr(q_start + 33)
+        qs = []
+        for i in range(read_length):
+            q = round(q_start + (q_end - q_start) * i / (read_length - 1))
+            qs.append(chr(q + 33))
+        return "".join(qs)
 
     # Making sequencing object + Applying sequencing errors
     with open(chosen_file) as f:
@@ -328,17 +377,43 @@ if __name__ == "__main__":
                     sE.run_mutations()
                     MUTATED_TEXT.append(sE.seq)
 
+            MUTATED_TEXT_FINAL = []
+            for read in MUTATED_TEXT:
+                clean_read = "".join(read).replace(" ","")
+                MUTATED_TEXT_FINAL.append(clean_read)
+
             # Writing fast.q file with mutated reads
             if method == '1':
-                for read_id, read in enumerate(MUTATED_TEXT):
-                    f.write(f"@read{read_id}\n{read}\n+\n!!!!!!\n")
+                for read_id, read in enumerate(MUTATED_TEXT_FINAL, start = 1):
+                    qual1 = quality_profile(len(read), 35, 28)
+                    f.write(f"@read{read_id}\n{read}\n+\n{qual1}\n")
             else:
                 read_id = 1
-                for i in range(0, len(MUTATED_TEXT), 2):
-                    read1 = MUTATED_TEXT[i]
-                    read2 = MUTATED_TEXT[i + 1]
-                    f.write(f"@read{read_id}/1\n{read1}\n+\n!!!!!!\n@read{read_id}/2\n{read2}\n+\n!!!!!!\n")
+                for i in range(0, len(MUTATED_TEXT_FINAL), 2):
+
+                    read1 = MUTATED_TEXT_FINAL[i]
+                    read2 = MUTATED_TEXT_FINAL[i + 1]
+
+                    qual1 = quality_profile(len(read), 35, 28)
+                    qual2 = quality_profile(len(read2), 33, 24)
+
+                    f.write(f"@read{read_id}/1\n{read1}\n+\n{qual1}\n@read{read_id}/2\n{read2}\n+\n{qual2}\n")
                     read_id += 1
 
+        # Writing Additional R1.fastq and R2.fastq separately as well
+        if method == '2':
+            with open(fr"{SEQ_DIR}\\sequencing_R1.fastq", "w") as f1, open(fr"{SEQ_DIR}\\sequencing_R2.fastq", "w") as f2:
+                read_id = 1
+                for i in range(0, len(MUTATED_TEXT_FINAL), 2):
+
+                    read1 = MUTATED_TEXT_FINAL[i]
+                    read2 = MUTATED_TEXT_FINAL[i + 1]
+
+                    qual1 = quality_profile(len(read), 35, 28)
+                    qual2 = quality_profile(len(read2), 33, 24)
+
+                    f1.write(f"@read{read_id}/1\n{read1}\n+\n{qual1}\n")
+                    f2.write(f"@read{read_id}/2\n{read2}\n+\n{qual2}\n")
+                    read_id += 1
 
     print("Sequencing.py run")
