@@ -17,6 +17,7 @@ mutation attributes origin
 
 """
 import os
+import random
 
 import numpy as np
 
@@ -320,6 +321,8 @@ if __name__ == "__main__":
                         READ_PE.append(read2)
 
     # Writing reads back to their respective fastq files:
+    # dummy quality scores
+    # this part is mainly to generate files to use them for 'seq_objs' later below to run mutations
     chosen_file = ''
     if method == '1': # For READ_SE:
         with open(fr'{SEQ_DIR}\Read_SE.txt', "w") as file:
@@ -348,15 +351,41 @@ if __name__ == "__main__":
     def qual_string(s, q=30):
         return phred_char(q) * len(s)
     """
-
-    def quality_profile(read_length, q_start=35, q_end=28):
+    # for start to end varying quality score, initially higher at q_start then goes down lower till q_end
+    """def quality_score(read_length, q_start=35, q_end=28):
         if read_length == 1:
             return chr(q_start + 33)
         qs = []
         for i in range(read_length):
             q = round(q_start + (q_end - q_start) * i / (read_length - 1))
             qs.append(chr(q + 33))
-        return "".join(qs)
+        return "".join(qs)"""
+
+    def q_to_char(q):
+        q = max(2, min(40, int(q)))
+        return chr(q + 33)
+
+    def quality_score(read_length, read_type="R1"):
+        r = random.random()
+        if r < 0.85:
+            base_q = random.randint(30, 38) # 85% of the base reads
+        elif r < 0.97:
+            base_q = random.randint(20, 29) # 12% of the base reads
+        else:
+            base_q = random.randint(8, 19)  # 3% of the base reads
+
+        if read_type == "R2":
+            base_q -= random.randint(0, 3) # R2 base reads quality are slightly less than R1, so decrease base_quality a little
+
+        quals = []
+        for i in range(read_length):
+            q = base_q + random.randint(-2, 2) # a small jitter [OPTIONAL]
+
+            if i > 0.8 * read_length: # slight tail decay in last 20% of read
+                q -= random.randint(0, 4)
+
+            quals.append(q_to_char(q))
+        return "".join(quals)
 
     # Making sequencing object + Applying sequencing errors
     with open(chosen_file) as f:
@@ -385,7 +414,8 @@ if __name__ == "__main__":
             # Writing fast.q file with mutated reads
             if method == '1':
                 for read_id, read in enumerate(MUTATED_TEXT_FINAL, start = 1):
-                    qual1 = quality_profile(len(read), 35, 28)
+                    #qual1 = quality_score(len(read), 35, 28)
+                    qual1 = quality_score(len(read1), "R1")
                     f.write(f"@read{read_id}\n{read}\n+\n{qual1}\n")
             else:
                 read_id = 1
@@ -394,8 +424,11 @@ if __name__ == "__main__":
                     read1 = MUTATED_TEXT_FINAL[i]
                     read2 = MUTATED_TEXT_FINAL[i + 1]
 
-                    qual1 = quality_profile(len(read), 35, 28)
-                    qual2 = quality_profile(len(read2), 33, 24)
+                    #qual1 = quality_score(len(read), 35, 28)
+                    #qual2 = quality_score(len(read2), 33, 24)
+
+                    qual1 = quality_score(len(read1), "R1")
+                    qual2 = quality_score(len(read2), "R2")
 
                     f.write(f"@read{read_id}/1\n{read1}\n+\n{qual1}\n@read{read_id}/2\n{read2}\n+\n{qual2}\n")
                     read_id += 1
@@ -409,11 +442,27 @@ if __name__ == "__main__":
                     read1 = MUTATED_TEXT_FINAL[i]
                     read2 = MUTATED_TEXT_FINAL[i + 1]
 
-                    qual1 = quality_profile(len(read), 35, 28)
-                    qual2 = quality_profile(len(read2), 33, 24)
+                    # qual1 = quality_score(len(read), 35, 28)
+                    # qual2 = quality_score(len(read2), 33, 24)
+
+                    qual1 = quality_score(len(read1), "R1")
+                    qual2 = quality_score(len(read2), "R2")
 
                     f1.write(f"@read{read_id}/1\n{read1}\n+\n{qual1}\n")
                     f2.write(f"@read{read_id}/2\n{read2}\n+\n{qual2}\n")
                     read_id += 1
+
+    files_to_delete = [
+        fr'{SEQ_DIR}\sequencing_sampled_pool.txt',
+        fr'{SEQ_DIR}\Read_SE.txt',
+        fr'{SEQ_DIR}\Read_PE.txt',
+        fr'{SEQ_DIR}\pre_sequencing_filter.txt',
+        fr'{SEQ_DIR}\PARENT_CHILD_INFO.txt',
+        fr'{SEQ_DIR}\CHILD_INFO.txt'
+    ]
+
+    for file_path in files_to_delete:
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
     print("Sequencing.py run")
