@@ -310,6 +310,8 @@ remove that particular sequence from the line and see if the line/Oligo is valid
 
     Think around this concept!!
 """
+
+
 input_file = "Turkish_anthem.tar.gz.dna_order.txt"
 path = fr'{os.getcwd()}\dna-fountain\{input_file}'
 with open(path, "r") as file:
@@ -338,6 +340,7 @@ with open(path, "r") as file:
         f.writelines(filtered_lines)
 
 
-
+if __name__ == "__main__":
+    print(len(undesired_sequences))
 
 

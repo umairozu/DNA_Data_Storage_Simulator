@@ -2,12 +2,12 @@ import matplotlib.pyplot as plt
 from typing import Optional
 import numpy as np
 
-from CassetteTapeDecay import CassetteTapeDecay
+from Arrhenius_decay import Arrhenius_decay
 temps = [60, 65, 70]
 
 class PlotClass:
 
-    model: CassetteTapeDecay
+    model: Arrhenius_decay
 
 
     def plot_fig5E(self, out_png: Optional[str] = None) -> None:

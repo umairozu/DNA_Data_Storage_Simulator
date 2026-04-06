@@ -69,7 +69,6 @@ def copy_distribution(avg_copy_oligo=100e6, k=4):
 MUTATED_TEXT = []
 
 if __name__ == "__main__":
-    BASE_DIR = fr'{os.getcwd()}\dna-fountain'
 
     with open(fr'{BASE_DIR}\original_order_file.txt') as f:
         initial_lines = [line.strip() for line in f if line.strip()]
@@ -119,8 +118,8 @@ if __name__ == "__main__":
 
 
     print("Synthesis.py run")
-    os.remove(fr'{BASE_DIR}\synthesis_file_0.txt')
+    """os.remove(fr'{BASE_DIR}\synthesis_file_0.txt')
     os.remove(fr'{BASE_DIR}\synthesis_file_1.txt')
-
+    """
 
 

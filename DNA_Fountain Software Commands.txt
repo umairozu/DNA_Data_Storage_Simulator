@@ -1,4 +1,13 @@
+python setup.py build_ext --inplace
 
-1. python encode.py --file_in room_image.tar.gz --size 32 -m 3 --gc 0.05 --rs 2 --delta 0.001 --c_dist 0.025 --out room_image.tar.gz.dna --stop 7200
+1.
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 
-2. Get-Content room_image.tar.gz.dna | Where-Object { $_ -notmatch '>' } | ForEach-Object { "GTTCAGAGTTCTACAGTCCGACGATC" + $_ + "TGGAATTCTCGGGTGCCAAGG" } | Set-Content room_image.tar.gz.dna_order
+2. 
+.\tarAndAlign.ps1 .\file1.txt "file1.tar.gz"
+
+3.
+python encode.py --file_in file1.tar.gz --size 16 -m 3 --gc 0.05 --rs 5 --delta 0.05 --out file1.tar.gz.dna --stop 41
+
+4. 
+Get-Content file1.tar.gz.dna | Where-Object { $_ -notmatch '>' } | ForEach-Object { "TGGCTCATTTCACAATCGGT" + $_ +"GATC"+"ATAAATGACCTGCCGTGCAA" } | Set-Content file1.tar.gz.dna_order

@@ -1,11 +1,9 @@
 import math
 import os
 import re
-
 import numpy as np
 from Error_module import Error_simulation
 from Arrhenius_decay import Arrhenius_decay
-
 
 SEC_PER_WEEK = 7 * 24 * 3600
 SEC_PER_YEAR = 365 * 24 * 3600

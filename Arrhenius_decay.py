@@ -26,7 +26,6 @@ We are Replicating 'Arrhenius Calculate' behavior using RawData.xlsx:
   - Arrhenius: ln k = ln A - Ea/(R T)  (used for Fig 5G curve (Half life vs temp))
   - k is Decay rate constant
   - ea is activation energy
-  
 """
 
 @dataclass

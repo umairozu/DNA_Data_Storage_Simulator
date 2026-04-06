@@ -107,9 +107,6 @@ def seq_check(eff_i, sequence):
     return eff_i
 
 
-
-BASE_DIR = fr'{os.getcwd()}\dna-fountain'
-
 # PCR pre-filtering --> removing non_specific amplicons as a cleanup for sequencing
 with open(fr'{STORAGE_DIR}\storage_file_1.txt') as f:
     """
@@ -501,12 +498,12 @@ print(f"initial_copies_pcr: {sum_initial_copies_pcr}")
 print(f"sum_copies_pcr_final: {sum_copies_pcr_final}")
 print(f"Diff:{sum_initial_copies_pcr - sum_copies_pcr_final} ")
 
-
+"""
 os.remove(fr'{BASE_DIR}\pcr_complete.txt')
 os.remove(fr'{BASE_DIR}\pcr_complete_2.txt')
 os.remove(fr'{BASE_DIR}\pcr_CHANGED_POOL.txt')
 os.remove(fr'{BASE_DIR}\pcr_pre_final.txt')
-
+"""
 
 if __name__ == "__main__":
     print("Pcr.py run")
