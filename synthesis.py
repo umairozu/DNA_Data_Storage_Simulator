@@ -47,9 +47,9 @@ mutation_attributes = {
                         }
 
 
-BASE_DIR = fr'{os.getcwd()}\dna-fountain'
-os.makedirs(fr'{BASE_DIR}\synthesis', exist_ok=True)
-SYNTHESIS_DIR = fr'{os.getcwd()}\dna-fountain\synthesis'
+BASE_DIR = fr'{os.getcwd()}'
+os.makedirs(fr'{os.getcwd()}\synthesis', exist_ok=True)
+SYNTHESIS_DIR = fr'{os.getcwd()}\synthesis'
 
 def copy_distribution(avg_copy_oligo=100e6, k=4):
     # k is the divergence parameter
@@ -70,7 +70,7 @@ MUTATED_TEXT = []
 
 if __name__ == "__main__":
 
-    with open(fr'{BASE_DIR}\original_order_file.txt') as f:
+    with open(fr'{BASE_DIR}\dna-fountain\test_file.tar.gz.dna_order.txt') as f:
         initial_lines = [line.strip() for line in f if line.strip()]
         seq_objs = [Error_simulation(seq, "synthesis", attribute = mutation_attributes["3"],
                                      error_rate = err_rates["3"])

@@ -6,8 +6,8 @@ import os
 # constants / paths
 # --------------------
 BASE_DIR = fr"{os.getcwd()}\dna-fountain"
-INPUT_PATH = fr"{BASE_DIR}\turkish_anthem.tar.gz.dna"
-ORDER_PATH = fr"{BASE_DIR}\turkish_anthem.tar.gz.dna_order.txt"
+INPUT_PATH = fr"{BASE_DIR}\test_file.tar.gz.dna"
+ORDER_PATH = fr"{BASE_DIR}\test_file.tar.gz.dna_order.txt"
 FASTA_PATH = fr"{BASE_DIR}\final_file.FASTA"
 
 primer_F = "TGGCTCATTT"

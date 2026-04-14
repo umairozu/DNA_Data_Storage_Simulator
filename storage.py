@@ -11,10 +11,10 @@ SEC_PER_YEAR = 365 * 24 * 3600
 xlsx = "RawData.xlsx"
 sim = Arrhenius_decay.from_xlsx(xlsx)
 
-BASE_DIR = fr'{os.getcwd()}\dna-fountain'
+BASE_DIR = fr'{os.getcwd()}'
 os.makedirs(fr'{BASE_DIR}\storage', exist_ok=True)
-SYNTHESIS_DIR = fr'{os.getcwd()}\dna-fountain\synthesis'
-STORAGE_DIR = fr'{os.getcwd()}\dna-fountain\storage'
+SYNTHESIS_DIR = fr'{os.getcwd()}\synthesis'
+STORAGE_DIR = fr'{os.getcwd()}\storage'
 
 def survival_distribution(copy_count, temp_C, encapsulated, week):
     remaining_frac = Arrhenius_decay.remaining_dna_frac(sim, temp_C, encapsulated, week)

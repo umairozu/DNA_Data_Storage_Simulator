@@ -54,10 +54,10 @@ mutation_attributes = {"1": {"deletion": {"position": {"random": 1},
                                            "pattern": {"A": 0.35, "T": 0.35, "C": 0.15, "G": 0.15}},
                              "substitution": {"pattern": {"TAG": "TGG", "TAC": "TGC"}}}}
 
-BASE_DIR = fr'{os.getcwd()}\dna-fountain'
+BASE_DIR = fr'{os.getcwd()}'
 os.makedirs(fr'{BASE_DIR}\sequencing', exist_ok=True)
-PCR_DIR = fr'{os.getcwd()}\dna-fountain\pcr'
-SEQ_DIR = fr'{os.getcwd()}\dna-fountain\sequencing'
+PCR_DIR = fr'{os.getcwd()}\pcr'
+SEQ_DIR = fr'{os.getcwd()}\sequencing'
 
 
 
@@ -84,7 +84,7 @@ MUTATED_TEXT = []
 
 if __name__ == "__main__":
 
-    mode = input("Enter Sequencing Mode:  --help [1. Illumina, 2. PacBio, 3. Nanopore ]\n")
+    mode = input("Enter Sequencing Mode:  --help [1. Illumina]\n")
     assert mode in ["1","2","3"]
     if mode == "1":
         method = input("Enter method for illumina sequencing:  --help [1. Single-end, 2. Paired-end]\n")
@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
     #Collecting original oligo's given for order
     ORIGINAL_ORDER_OLIGOS = []
-    with open(fr'{BASE_DIR}\original_order_file.txt') as file:
+    with open(fr'{BASE_DIR}\dna-fountain\test_file.tar.gz.dna_order.txt') as file:
         for line in file:
             ORIGINAL_ORDER_OLIGOS.append(line)
 
@@ -395,8 +395,8 @@ if __name__ == "__main__":
                     for seq in lines
                     ]
 
-    VALVE = 10
-    filename = "sequencing_SE.fastq" if method == '1' else "sequencing_PE.fastq"
+    VALVE = 3
+    filename = "sequencing_R1.fastq" if method == '1' else "sequencing_R2.fastq"
     filepath = fr'{SEQ_DIR}\{filename}'
     if mode == '1':
         with open(filepath, "w") as f:
@@ -415,7 +415,7 @@ if __name__ == "__main__":
             if method == '1':
                 for read_id, read in enumerate(MUTATED_TEXT_FINAL, start = 1):
                     #qual1 = quality_score(len(read), 35, 28)
-                    qual1 = quality_score(len(read1), "R1")
+                    qual1 = quality_score(len(read), "R1")
                     f.write(f"@read{read_id}\n{read}\n+\n{qual1}\n")
             else:
                 read_id = 1

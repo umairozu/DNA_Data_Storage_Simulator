@@ -64,10 +64,10 @@ mutation_attributes = {
                               "substitution": {"pattern": {}}}
                         }
 
-BASE_DIR = fr'{os.getcwd()}\dna-fountain'
+BASE_DIR = fr'{os.getcwd()}'
 os.makedirs(fr'{BASE_DIR}\pcr', exist_ok=True)
-STORAGE_DIR = fr'{os.getcwd()}\dna-fountain\storage'
-PCR_DIR = fr'{os.getcwd()}\dna-fountain\pcr'
+STORAGE_DIR = fr'{os.getcwd()}\storage'
+PCR_DIR = fr'{os.getcwd()}\pcr'
 
 
 def amp_factor(eff_i):
