@@ -1,4 +1,4 @@
-
+import argparse
 import os
 import numpy as np
 from Error_module import Error_simulation
@@ -48,8 +48,8 @@ mutation_attributes = {
 
 
 BASE_DIR = fr'{os.getcwd()}'
-os.makedirs(fr'{os.getcwd()}\synthesis', exist_ok=True)
-SYNTHESIS_DIR = fr'{os.getcwd()}\synthesis'
+os.makedirs(fr'{os.getcwd()}/synthesis', exist_ok=True)
+SYNTHESIS_DIR = fr'{os.getcwd()}/synthesis'
 
 def copy_distribution(avg_copy_oligo=100e6, k=4):
     # k is the divergence parameter
@@ -64,62 +64,98 @@ def copy_distribution(avg_copy_oligo=100e6, k=4):
         print(oligo_count)
     return oligo_count
 
+def valve_range(value):
+    v = int(value)
+    if not (0 <= v <= 100):
+        raise argparse.ArgumentTypeError("custom VALVE must be between 0 and 100.")
+    return v
 
+
+_p = argparse.ArgumentParser(description="synthesis.py run")
+_p.add_argument("--mut", default = "2" , help = "Mutation intensity (0-3)")
+_p.add_argument("--c", type = valve_range, help = "Optional custom VALVE (0-100), it is basically a mutation knob" )
+_p.add_argument("--in_file", required=True, help="Input file name (e.g  test_file)")
+_p.add_argument("--out_file", default="synthesis_output",
+                help="Output file name [default is 'synthesis_output'] ")
+
+args = _p.parse_args()
+in_file = fr'dna-fountain/{args.in_file}.tar.gz.dna_order.txt'
+out_file = fr'{args.out_file}.txt'
+
+VALVE_HIGH = 20
+VALVE_MED = 15
+VALVE_LOW = 10
+VALVE_NULL = 0
+
+if args.c is not None:
+    VALVE = args.c
+    print(f"Using custom VALVE")
+elif args.mut in ["0", "1", "2", "3"]:
+    if args.mut == "0":
+        VALVE = VALVE_NULL
+    elif args.mut == "1":
+        VALVE = VALVE_LOW
+    elif args.mut == "2":
+        VALVE = VALVE_MED
+    else:
+        VALVE = VALVE_HIGH
+else:
+    raise ValueError("Invalid mutation VALVE [try --help]")
+
+print(f"Running with VALVE: {VALVE}")
+
+with open(fr'{BASE_DIR}/{in_file}') as f:
+    initial_lines = [line.strip() for line in f if line.strip()]
+    seq_objs = [Error_simulation(seq, "synthesis", attribute=mutation_attributes["3"],
+                                 error_rate=err_rates["3"])
+                for seq in initial_lines
+                ]
 
 MUTATED_TEXT = []
 
+if VALVE == 0:
+    for sE in seq_objs:
+        MUTATED_TEXT.append(sE.seq)
+
+count = 1
+while count < VALVE:
+    MUTATED_TEXT.clear()
+    for sE in seq_objs:
+        # sE.reset_visited() # See important Notice for info
+        sE.run_mutations()
+        MUTATED_TEXT.append(sE.seq)
+    count += 1
+
+with open(fr'{SYNTHESIS_DIR}/synthesis_file_0.txt', "w") as f:
+    f.write("\n".join(MUTATED_TEXT) + "\n")
+
+NEW = []
+with open(fr'{SYNTHESIS_DIR}/synthesis_file_0.txt') as f:
+    for line in f:
+        clean_lines = line.split()[0]
+        NEW.append(clean_lines)
+
+with open(fr'{SYNTHESIS_DIR}/synthesis_file_1.txt', "w") as f:
+    f.write("\n".join(NEW) + "\n")
+
+    # file read for copy:
+with open(fr'{SYNTHESIS_DIR}/synthesis_file_1.txt') as f:
+    lines = f.readlines()
+
+copies = []
+for line in lines:
+    oligo_copies = copy_distribution()
+    copies.append(oligo_copies)
+
+with open(fr'{SYNTHESIS_DIR}/{out_file}', "w") as f:
+    for copy, line in zip(copies, lines):
+        f.write(f"{copy},{line}")
+
 if __name__ == "__main__":
 
-    with open(fr'{BASE_DIR}\dna-fountain\test_file.tar.gz.dna_order.txt') as f:
-        initial_lines = [line.strip() for line in f if line.strip()]
-        seq_objs = [Error_simulation(seq, "synthesis", attribute = mutation_attributes["3"],
-                                     error_rate = err_rates["3"])
-                    for seq in initial_lines
-                    ]
+    os.remove(fr'{SYNTHESIS_DIR}/synthesis_file_0.txt')
+    os.remove(fr'{SYNTHESIS_DIR}/synthesis_file_1.txt')
 
-    count = 1
-    VALVE = 15
-    while count < VALVE:
-        MUTATED_TEXT.clear()
-        for sE in seq_objs:
-            #sE.reset_visited() # See important Notice for info
-            sE.run_mutations()
-            MUTATED_TEXT.append(sE.seq)
-
-        with open(fr'{SYNTHESIS_DIR}\synthesis_file_0.txt', "w") as f:
-            f.write("\n".join(MUTATED_TEXT) + "\n")
-        count += 1
-
-
-    NEW = []
-    with open(fr'{SYNTHESIS_DIR}\synthesis_file_0.txt') as f:
-        for line in f:
-            clean_lines = line.split()[0]
-            NEW.append(clean_lines)
-
-    with open(fr'{SYNTHESIS_DIR}\synthesis_file_1.txt', "w") as f:
-        f.write("\n".join(NEW) + "\n")
-
-
-    #file read for copy:
-    with open(fr'{SYNTHESIS_DIR}\synthesis_file_1.txt') as f:
-        lines = f.readlines()
-
-
-    copies = []
-    for line in lines:
-        oligo_copies = copy_distribution()
-        copies.append(oligo_copies)
-
-
-    with open(fr'{SYNTHESIS_DIR}\synthesis_file_2.txt', "w") as f:
-        for copy, line in zip(copies, lines):
-            f.write(f"{copy},{line}")
-
-
-    print("Synthesis.py run")
-    """os.remove(fr'{BASE_DIR}\synthesis_file_0.txt')
-    os.remove(fr'{BASE_DIR}\synthesis_file_1.txt')
-    """
+    print("Synthesis.py run completed")
 
 

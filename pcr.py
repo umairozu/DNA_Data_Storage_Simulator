@@ -1,10 +1,12 @@
+
+
+import argparse
 import os
 import random
 import re
-
 import numpy as np
+import json
 from GC_content import gc_error_probability
-from Enzyme_Addition import primer_F, primer_R,orig_length,pF_length,pR_length
 from Error_module import Error_simulation
 
 err_rates = {
@@ -65,9 +67,43 @@ mutation_attributes = {
                         }
 
 BASE_DIR = fr'{os.getcwd()}'
-os.makedirs(fr'{BASE_DIR}\pcr', exist_ok=True)
-STORAGE_DIR = fr'{os.getcwd()}\storage'
-PCR_DIR = fr'{os.getcwd()}\pcr'
+os.makedirs(fr'{BASE_DIR}/pcr', exist_ok=True)
+STORAGE_DIR = fr'{os.getcwd()}/storage'
+PCR_DIR = fr'{os.getcwd()}/pcr'
+
+metadata_path = fr'{BASE_DIR}/metadata.json'
+with open(metadata_path, "r") as f:
+    metadata = json.load(f)
+
+primer_F = metadata["primer_F"]
+primer_R = metadata["primer_R"]
+orig_length = metadata["orig_length"]
+pF_length = metadata["pF_length"]
+pR_length = metadata["pR_length"]
+
+
+
+_p = argparse.ArgumentParser(description="pcr.py run")
+_p.add_argument("--s", type = lambda x: float(x) if 0.0 < float(x) <= 100.0 else _p.error("keep 0 < Sampling fraction <= 100"),
+                                        default = "1.0" , help = "sampling fraction > 0.0")
+_p.add_argument("--n", type = lambda x: int(x) if int(x) > 0 else _p.error("Pcr cycle should be > 0 [better to keep it 30]"),
+                                        default = "30" , help = "number of pcr cycles > 0")
+_p.add_argument("--m", type = lambda x: int(x) if int(x) > 0 else _p.error("Max pcr yield > 0 [better to keep it N^9 molecules]"),
+                                        required = True, help = "Maximum pcr yield after n cycles")
+_p.add_argument("--mut", default = "2" , help = "Mutation intensity (0-3)")
+_p.add_argument("--c", type = lambda x: int(x) if  0 < int(x) <= 100 else _p.error("keep 0 < custom VALVE <= 100"),
+                                        help = "Optional custom VALVE (0-100), it is basically a mutation knob" )
+_p.add_argument("--in_file", required = True, help="Input file name (e.g  storage_in)")
+_p.add_argument("--out_file", default = "storage_output", help = "Output file name [default is 'pcr_output'] ")
+
+
+
+args = _p.parse_args()
+sampling_frac = float(args.s)
+num_cycles = int(args.n)
+max_yield = int(args.m)
+in_file = fr'{args.in_file}'
+out_file = fr'{PCR_DIR}/{args.out_file}.txt'
 
 
 def amp_factor(eff_i):
@@ -108,7 +144,7 @@ def seq_check(eff_i, sequence):
 
 
 # PCR pre-filtering --> removing non_specific amplicons as a cleanup for sequencing
-with open(fr'{STORAGE_DIR}\storage_file_1.txt') as f:
+with open(fr'{in_file}') as f:
     """
     #200823,AATGGTTTACCCATA
     #count = [200823], seq [AATGGTTTACCCATA]
@@ -117,9 +153,12 @@ with open(fr'{STORAGE_DIR}\storage_file_1.txt') as f:
     """
     data = []
     for line in f:
-        if "," in line.strip():
+        if "," in line:
             count, seq = line.split(",")
-            data.append({'count': int(count.strip()), 'seq': seq.strip()})
+            count_int = int(count.strip())
+
+            if count_int > 0:  # Only append if count is positive
+                data.append({'count': count_int, 'seq': seq.strip()})
 
 dropouts = []
 filtered_lines = []
@@ -148,13 +187,17 @@ for index in data:
         else:
             filtered_lines.append((count,seq))
 
-with open(fr'{PCR_DIR}\pcr_dropouts.txt', "w") as f:
+with open(fr'{PCR_DIR}/pcr_dropouts.txt', "w") as f:
     f.write("count, sequence, length\n")
     for c, s in dropouts:
         l = len(s)
         f.write(f"{c},{s},{l}\n")
 
-with open(fr'{PCR_DIR}\pcr_filtered.txt', "w") as f:
+if len(filtered_lines) == 0:
+    raise ValueError("PCR FAILED!!!")
+
+
+with open(fr'{PCR_DIR}/pcr_filtered.txt', "w") as f:
     f.write("count, sequence, length\n")
     for c, s in filtered_lines:
         l = len(s)
@@ -162,9 +205,9 @@ with open(fr'{PCR_DIR}\pcr_filtered.txt', "w") as f:
 
 
 # PCR sampling
-sampling_frac = float(input("Enter PCR sampling fraction (in %age): ")) / 100
+#sampling_frac = float(input("Enter PCR sampling fraction (in %age): ")) / 100
 
-with open(fr'{PCR_DIR}\pcr_filtered.txt') as f:
+with open(fr'{PCR_DIR}/pcr_filtered.txt') as f:
     next(f)
     data = []
     for line in f:
@@ -180,7 +223,7 @@ for index in data:
     bnd_choice = np.random.choice(bnd)
     index['count'] = bnd_choice
 
-with open(fr'{PCR_DIR}\pcr_sampled.txt', "w") as f:
+with open(fr'{PCR_DIR}/pcr_sampled.txt', "w") as f:
     f.write("sampled_count, sequence, length\n")
     for index in data:
         count = index['count']
@@ -189,16 +232,16 @@ with open(fr'{PCR_DIR}\pcr_sampled.txt', "w") as f:
         f.write(f'{count},{seq},{length}\n')
 
 # PCR amplification
-num_cycles = int(input("Enter the desired PCR cycle to run: ")) # e.g 30
+#num_cycles = int(input("Enter the desired PCR cycle to run: ")) # e.g 30
 c1 = num_cycles // 3 # e.g 10
 c2 = c1 + num_cycles // 3 # e.g 10 + 10 = 20
 c3 = num_cycles # e.g 30
 
-max_yield = int(input("Enter the maximum pcr yield expected:")) # so new pool will be original molecules + pcr pool/yield
+#max_yield = int(input("Enter the maximum pcr yield expected:")) # so new pool will be original molecules + pcr pool/yield
 
 E0_i = 0.9  # initial efficiency
 """Calculating per oligo Efficiency in the sample based on [PRIMER BINDING, GC CONTENT] of the oligo"""
-with open(fr'{PCR_DIR}\pcr_sampled.txt') as f:
+with open(fr'{PCR_DIR}/pcr_sampled.txt') as f:
     next(f)
     data = []
     for line in f:
@@ -339,7 +382,7 @@ with open(fr'{PCR_DIR}\pcr_sampled.txt') as f:
                 break
 
 # Writing back the copy counts after PCR completion
-with open(fr'{PCR_DIR}\pcr_complete.txt', "w") as f:
+with open(fr'{PCR_DIR}/pcr_complete.txt', "w") as f:
     f.write("sampled_count, sequence, length, efficiency_Remaining\n")
     for index in data:
         count = index['count']
@@ -354,7 +397,7 @@ with open(fr'{PCR_DIR}\pcr_complete.txt', "w") as f:
 
 MUTATED_TEXT = []
 
-with open(fr'{PCR_DIR}\pcr_complete.txt') as f:
+with open(fr'{PCR_DIR}/pcr_complete.txt') as f:
     next(f)
     rows = [line.strip().split(",") for line in f if line.strip()]
     initial_copies, initial_lines, initial_length, eff = zip(*rows)
@@ -368,8 +411,34 @@ CHANGED_TEXT = []
 UN_CHANGED_TEXT = []
 UN_CHANGED_TEXT_02 = []
 
+
+VALVE_HIGH = 35
+VALVE_MED = 30 # Knob for mutations
+VALVE_LOW = 25
+VALVE_NULL = 0
+
+if args.c is not None:
+    VALVE = args.c
+    print(f"Using custom VALVE")
+elif args.mut in ["0", "1", "2", "3"]:
+    if args.mut == "0":
+        VALVE = VALVE_NULL
+    elif args.mut == "1":
+        VALVE = VALVE_LOW
+    elif args.mut == "2":
+        VALVE = VALVE_MED
+    else:
+        VALVE = VALVE_HIGH
+else:
+    raise ValueError("Invalid mutation VALVE [try --help]")
+
+print(f"Running with VALVE: {VALVE}")
+
+if VALVE == 0:
+    for sE in seq_objs:
+        MUTATED_TEXT.append(sE.seq)
+
 count = 1
-VALVE = 30 # Knob for mutations
 while count < VALVE:
     MUTATED_TEXT.clear()
     for sE in seq_objs:
@@ -379,14 +448,14 @@ while count < VALVE:
     count += 1
 
 # giving each original oligo sequence 80% copy count, rest of the count will go to mutated variants and CHIMERAS
-with open(fr'{PCR_DIR}\pcr_complete_2.txt', "w") as f:
+with open(fr'{PCR_DIR}/pcr_complete_2.txt', "w") as f:
     f.write("sampled_count, sequence, length\n")
     for copy_count, line, length in zip(initial_copies, initial_lines,initial_length):
         UN_CHANGED_TEXT.append((int(int(copy_count) * 0.80), line))
         f.write(f"{int(int(copy_count) * 0.80)},{line},{length}\n")
 
 # giving each mutated sequence(sequences generated via Error_module.py) a 10% copy count of original sequence
-with open(fr'{PCR_DIR}\pcr_CHANGED_POOL.txt', "w") as f:
+with open(fr'{PCR_DIR}/pcr_CHANGED_POOL.txt', "w") as f:
     f.write("count, sequence, length\n")
     for copy_count, original_line, length in zip(initial_copies, initial_lines, initial_length):
         if original_line not in MUTATED_TEXT:
@@ -425,7 +494,7 @@ CHANGED_TEXT = [] # Mutated oligos with 10% of initial count
 UN_CHANGED_TEXT = [] # original oligo with 80% of initial count
 UN_CHANGED_TEXT_02 = [] # if not Mutated, 10% of initial count back to original
 """
-with open(fr'{PCR_DIR}\pcr_pre_final.txt', "w") as f:
+with open(fr'{PCR_DIR}/pcr_pre_final.txt', "w") as f:
     f.write("count, sequence, length\n")
     for item in LIST:
         f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
@@ -441,7 +510,7 @@ with open(fr'{PCR_DIR}\pcr_pre_final.txt', "w") as f:
 # DEFAULT: Chimeras are 5% of the total pcr reads in our simulator, Change the knob value below to increase/decrease their quantity
 LIST_02 = []
 LIST_03 = []
-with open(fr'{PCR_DIR}\pcr_pre_final.txt') as f:
+with open(fr'{PCR_DIR}/pcr_pre_final.txt') as f:
     next(f)
     rows = [line.strip().split(",") for line in f if line.strip()]
     copy_count, lines, _ = zip(*rows)
@@ -476,7 +545,7 @@ while chimeras_variants > 0:
     CHIMERAS_LIST.append((portions[chimeras_variants],new_chimeras))
 
 
-with open(fr'{PCR_DIR}\pcr_final.txt', "w") as f:
+with open(fr'{out_file}', "w") as f:
     f.write("count, sequence, length\n")
     for item in LIST_02:
         f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
@@ -487,7 +556,7 @@ with open(fr'{PCR_DIR}\pcr_final.txt', "w") as f:
 
 print(f"final file length: {len(LIST_02)} + {len(LIST_03)} + {len(CHIMERAS_LIST)}")
 
-with open(fr'{PCR_DIR}\pcr_final.txt') as f:
+with open(fr'{out_file}') as f:
     next(f)
     rows = [line.strip().split(",") for line in f if line.strip()]
     copy_count, _, _ = zip(*rows)
@@ -498,12 +567,15 @@ print(f"initial_copies_pcr: {sum_initial_copies_pcr}")
 print(f"sum_copies_pcr_final: {sum_copies_pcr_final}")
 print(f"Diff:{sum_initial_copies_pcr - sum_copies_pcr_final} ")
 
-"""
-os.remove(fr'{BASE_DIR}\pcr_complete.txt')
-os.remove(fr'{BASE_DIR}\pcr_complete_2.txt')
-os.remove(fr'{BASE_DIR}\pcr_CHANGED_POOL.txt')
-os.remove(fr'{BASE_DIR}\pcr_pre_final.txt')
-"""
+
 
 if __name__ == "__main__":
-    print("Pcr.py run")
+    os.remove(fr'{PCR_DIR}/pcr_dropouts.txt')
+    os.remove(fr'{PCR_DIR}/pcr_filtered.txt')
+    os.remove(fr'{PCR_DIR}/pcr_sampled.txt')
+    os.remove(fr'{PCR_DIR}/pcr_complete.txt')
+    os.remove(fr'{PCR_DIR}/pcr_complete_2.txt')
+    os.remove(fr'{PCR_DIR}/pcr_CHANGED_POOL.txt')
+    os.remove(fr'{PCR_DIR}/pcr_pre_final.txt')
+
+    print("Pcr.py run completed")
