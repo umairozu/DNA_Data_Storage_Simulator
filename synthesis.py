@@ -1,5 +1,8 @@
 import argparse
+import json
 import os
+import random
+
 import numpy as np
 from Error_module import Error_simulation
 
@@ -51,7 +54,19 @@ BASE_DIR = fr'{os.getcwd()}'
 os.makedirs(fr'{os.getcwd()}/synthesis', exist_ok=True)
 SYNTHESIS_DIR = fr'{os.getcwd()}/synthesis'
 
-def copy_distribution(avg_copy_oligo=100e6, k=4):
+
+
+metadata_path = fr'{BASE_DIR}/metadata.json'
+with open(metadata_path, "r") as f:
+    metadata = json.load(f)
+
+orig_length = metadata["orig_length"]
+
+def efficiency(L = orig_length, coup_eff = 0.999):
+    return coup_eff ** (L - 1)
+
+
+def copy_distribution(seqs, avg_copy_oligo=1e8, k=35):
     # k is the divergence parameter
     min_copy_count = 1  # if 0, then we are allowing dropouts
     #rng = np.random.default_rng(seed)
@@ -59,7 +74,7 @@ def copy_distribution(avg_copy_oligo=100e6, k=4):
 
     p = k / (k + avg_copy_oligo)
 
-    oligo_count = np.random.negative_binomial(k, p)
+    oligo_count = np.max(np.random.negative_binomial(k, p, size = len(seqs)))
     if oligo_count == 0:
         print(oligo_count)
     return oligo_count
@@ -104,12 +119,27 @@ else:
 
 print(f"Running with VALVE: {VALVE}")
 
+
 with open(fr'{BASE_DIR}/{in_file}') as f:
-    initial_lines = [line.strip() for line in f if line.strip()]
-    seq_objs = [Error_simulation(seq, "synthesis", attribute=mutation_attributes["3"],
-                                 error_rate=err_rates["3"])
-                for seq in initial_lines
-                ]
+    np_LINES = np.array(f.readlines())
+
+counts_list = [copy_distribution(line) for line in np_LINES]
+
+np_COUNT = np.array(counts_list)
+
+eff = efficiency()
+
+np_COUNT2 = (np_COUNT * eff).astype(int)
+
+with open(fr'{SYNTHESIS_DIR}/file1.txt', "w+") as f:
+    for count, line in zip(np_COUNT2, np_LINES):
+        f.write(f"{count},{line}\n")
+    f.seek(0)
+    rows_01 = [line.strip().split(",") for line in f if line.strip()]
+
+seq_objs = [Error_simulation(seq, "synthesis", attribute=mutation_attributes["3"], error_rate=err_rates["3"])
+                for seq in np_LINES
+            ]
 
 MUTATED_TEXT = []
 
@@ -117,7 +147,7 @@ if VALVE == 0:
     for sE in seq_objs:
         MUTATED_TEXT.append(sE.seq)
 
-count = 1
+count = 0
 while count < VALVE:
     MUTATED_TEXT.clear()
     for sE in seq_objs:
@@ -126,35 +156,33 @@ while count < VALVE:
         MUTATED_TEXT.append(sE.seq)
     count += 1
 
-with open(fr'{SYNTHESIS_DIR}/synthesis_file_0.txt', "w") as f:
-    f.write("\n".join(MUTATED_TEXT) + "\n")
+np_COUNT3 = (np_COUNT * (1 - eff)).astype(int)
+np_MUTATED = np.array(MUTATED_TEXT)
 
-NEW = []
-with open(fr'{SYNTHESIS_DIR}/synthesis_file_0.txt') as f:
-    for line in f:
-        clean_lines = line.split()[0]
-        NEW.append(clean_lines)
+with open(fr'{SYNTHESIS_DIR}/file2.txt', "w+") as f:
+    for count, line in zip(np_COUNT3, np_MUTATED):
+        f.write(f"{count},{line.split()[0]}\n")
+    f.seek(0)
+    rows_02 = [line.strip().split(",") for line in f if line.strip()]
 
-with open(fr'{SYNTHESIS_DIR}/synthesis_file_1.txt', "w") as f:
-    f.write("\n".join(NEW) + "\n")
-
-    # file read for copy:
-with open(fr'{SYNTHESIS_DIR}/synthesis_file_1.txt') as f:
-    lines = f.readlines()
-
-copies = []
-for line in lines:
-    oligo_copies = copy_distribution()
-    copies.append(oligo_copies)
+combined_rows = rows_01 + rows_02
+random.shuffle(combined_rows)
 
 with open(fr'{SYNTHESIS_DIR}/{out_file}', "w") as f:
-    for copy, line in zip(copies, lines):
-        f.write(f"{copy},{line}")
+    for row in combined_rows:
+        f.write(f"{row[0]},{row[1]}\n")
 
 if __name__ == "__main__":
 
-    os.remove(fr'{SYNTHESIS_DIR}/synthesis_file_0.txt')
-    os.remove(fr'{SYNTHESIS_DIR}/synthesis_file_1.txt')
+    os.remove(fr'{SYNTHESIS_DIR}/file1.txt')
+    os.remove(fr'{SYNTHESIS_DIR}/file2.txt')
+
+    print(sum(np_COUNT2))
+    print("   +   ")
+    print(sum(np_COUNT3))
+    print("------------")
+    print(sum(np_COUNT2 + np_COUNT3))
+    print(sum(np_COUNT))
 
     print("Synthesis.py run completed")
 
