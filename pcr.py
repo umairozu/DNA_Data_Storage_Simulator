@@ -4,6 +4,8 @@ import argparse
 import os
 import random
 import re
+
+import Levenshtein
 import numpy as np
 import json
 from GC_content import gc_error_probability
@@ -88,8 +90,6 @@ _p.add_argument("--s", type = lambda x: float(x) if 0.0 < float(x) <= 100.0 else
                                         default = "1.0" , help = "sampling fraction > 0.0")
 _p.add_argument("--n", type = lambda x: int(x) if int(x) > 0 else _p.error("Pcr cycle should be > 0 [better to keep it 30]"),
                                         default = "30" , help = "number of pcr cycles > 0")
-_p.add_argument("--m", type = lambda x: int(x) if int(x) > 0 else _p.error("Max pcr yield > 0 [better to keep it N^9 molecules]"),
-                                        required = True, help = "Maximum pcr yield after n cycles")
 _p.add_argument("--mut", default = "2" , help = "Mutation intensity (0-3)")
 _p.add_argument("--c", type = lambda x: int(x) if  0 < int(x) <= 100 else _p.error("keep 0 < custom VALVE <= 100"),
                                         help = "Optional custom VALVE (0-100), it is basically a mutation knob" )
@@ -99,9 +99,8 @@ _p.add_argument("--out_file", default = "storage_output", help = "Output file na
 
 
 args = _p.parse_args()
-sampling_frac = float(args.s)
+sampling_frac = float(args.s) / 100
 num_cycles = int(args.n)
-max_yield = int(args.m)
 in_file = fr'{args.in_file}'
 out_file = fr'{PCR_DIR}/{args.out_file}.txt'
 
@@ -110,9 +109,8 @@ def amp_factor(eff_i):
     return 1 + eff_i
 
 def seq_check(eff_i, sequence):
-    num_primer_mismatch = 0
-    num_primer_mismatch += sum(1 for a, b in zip(sequence[:pF_length], primer_F) if a != b)
-    num_primer_mismatch += sum(1 for a, b in zip(sequence[-pR_length:], primer_R) if a != b)
+    seq_pF = sequence[:pF_length]
+    seq_pR = sequence[-pR_length:]
 
     # dropping efficiency if GC deviates from 45% - 55% range
     gc_error = gc_error_probability(sequence)
@@ -131,34 +129,38 @@ def seq_check(eff_i, sequence):
         #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
         """OPTIONAL: Local GC Content affect"""
 
+    sim_pF = Levenshtein.ratio(primer_F, seq_pF)
+    sim_pR = Levenshtein.ratio(primer_R, seq_pR)
+
     # dropping efficiency if mismatches at the primer sites
-    if num_primer_mismatch < 1:
-        eff_i = eff_i
-    elif num_primer_mismatch < 2:
+    if (sim_pF and sim_pR) < 0.90:
         eff_i *= 0.7
-    elif num_primer_mismatch < 3:
-        eff_i *= 0.4
+    elif (sim_pF and sim_pR) < 0.80:
+        eff_i *= 0.6
+    elif (sim_pF and sim_pR) < 0.70:
+        eff_i *= 0.5
     else:
-        eff_i *= 0.0  # the oligo won't amplify if primer mutation > 3
+        eff_i = eff_i
     return eff_i
 
 
 # PCR pre-filtering --> removing non_specific amplicons as a cleanup for sequencing
 with open(fr'{in_file}') as f:
+    next(f)
+    data = []
+    for line in f:
+        if "," in line:
+            count, seq, _ = line.split(",")
+            count_int = int(count.strip())
+
+            if count_int > 0:  # Only append if count is positive
+                data.append({'count': count_int, 'seq': seq.strip()})
     """
     #200823,AATGGTTTACCCATA
     #count = [200823], seq [AATGGTTTACCCATA]
     pairs = [line.strip().split(",") for line in f if line.strip()]
     count, seq = zip(*pairs)
     """
-    data = []
-    for line in f:
-        if "," in line:
-            count, seq = line.split(",")
-            count_int = int(count.strip())
-
-            if count_int > 0:  # Only append if count is positive
-                data.append({'count': count_int, 'seq': seq.strip()})
 
 dropouts = []
 filtered_lines = []
@@ -166,26 +168,21 @@ filtered_lines = []
 for index in data:
     count = index['count']
     seq = index['seq']
-    if len(seq) == orig_length:
-        """if seq[:pF_length] != primer_F or seq[-pR_length:] != primer_R:
-            dropouts.append((count,seq))""" # old code
-        num_mismatch = 0
-        pF = [seq[:pF_length]]
-        pR = [seq[-pR_length:]]
-        primer_F = [primer_F]
-        primer_R = [primer_R]
-        for char1, char2 in zip(pF,primer_F):
-            if char1 != char2:
-                num_mismatch += 1
-        if num_mismatch > 4:
-            dropouts.append((count, seq))
-        else:
-            filtered_lines.append((count,seq))
+
+    pF = seq[:pF_length]
+    pR = seq[-pR_length:]
+    primer_F = primer_F
+    primer_R = primer_R
+
+    similarity_pF = Levenshtein.ratio(primer_F, pF)
+    similarity_pR = Levenshtein.ratio(primer_R, pR)
+    #print(fr"Similarity  -->  pF: {similarity_pF}, pR: {similarity_pR}")
+
+    if (similarity_pF < 0.75 and similarity_pR < 0.75) or (abs(len(seq) - orig_length) > 20):
+        dropouts.append((count, seq))
     else:
-        if abs(len(seq) - orig_length) >= 10:
-            dropouts.append((count,seq))
-        else:
-            filtered_lines.append((count,seq))
+        filtered_lines.append((count, seq))
+
 
 with open(fr'{PCR_DIR}/pcr_dropouts.txt', "w") as f:
     f.write("count, sequence, length\n")
@@ -249,22 +246,15 @@ with open(fr'{PCR_DIR}/pcr_sampled.txt') as f:
             count, seq, length = line.split(",")
             data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip(), 'eff': seq_check(E0_i,seq) })
 
-    remaining_yield = max_yield
+    starting_molecules = sum(item['count'] for item in data)
 
     for c in range(0, c1): # on good conditions, exponential efficiency in c1
-        if remaining_yield <= 0:
-            break
-
-        new_copy_count = []
-        requested_copies = []
 
         for index_i in data:
-            #eff_01 = E0_i
             count_i = index_i['count']
             seq_i = index_i['seq']
             eff = index_i['eff']
-            # Turning sequence check at every cycle off as it might cause unnecessary efficiency collapse, instead it is computed once at the start
-            #eff = seq_check(eff, seq_i)
+
             if not (0 <= eff <= 1):
                 n_i = count_i
                 delta = 0
@@ -272,42 +262,17 @@ with open(fr'{PCR_DIR}/pcr_sampled.txt') as f:
                 amp_i = amp_factor(eff)
                 n_i = count_i * amp_i
                 delta = n_i - count_i
-            requested_copies.append(delta)
-            new_copy_count.append(n_i)
+
             index_i['eff'] = eff # this could store -ve efficiency, but we are dealing with it
-        total_demand = sum(requested_copies)
-        if total_demand == 0: # nothing to amplify in this cycle
-            break
-        if remaining_yield >= total_demand:
-            for i, item in enumerate(data):
-                item['count'] = int(new_copy_count[i])
-            remaining_yield -= total_demand
-        else: # if demand higher than what we have, we first check if yield remains then distribute proportionally, otherwise break from the cycle
-            if remaining_yield:
-                sum_amount_given = 0
-                for i, item in enumerate(data):
-                    fraction = requested_copies[i] / total_demand
-                    amount_given = fraction * remaining_yield
-                    sum_amount_given += amount_given
-                    item['count'] += int(amount_given)
-                remaining_yield -= sum_amount_given
-            else:
-                break
+            index_i['count'] = n_i
 
     for c in range(c1, c2): # efficiency become somewhat linear--> slow linear decrease
-        if remaining_yield <= 0:
-            break
-
-        new_copy_count = []
-        requested_copies = []
 
         for index_i in data:
-            #eff_02 = eff_01
             count_i = index_i['count']
             seq_i = index_i['seq']
             eff = index_i['eff']
             eff = eff - (eff / 10)
-            #eff = seq_check(eff, seq_i)
             if not (0 <= eff <= 1):
                 n_i = count_i
                 delta = 0
@@ -315,41 +280,16 @@ with open(fr'{PCR_DIR}/pcr_sampled.txt') as f:
                 amp_i = amp_factor(eff)
                 n_i = count_i * amp_i
                 delta = n_i - count_i
-            requested_copies.append(delta)
-            new_copy_count.append(n_i)
+
             index_i['eff'] = eff
-        total_demand = sum(requested_copies)
-        if total_demand == 0:
-            break
-        if remaining_yield >= total_demand:
-            for i, item in enumerate(data):
-                item['count'] = int(new_copy_count[i])
-            remaining_yield -= total_demand
-        else:
-            if remaining_yield:
-                sum_amount_given = 0
-                for i, item in enumerate(data):
-                    fraction = requested_copies[i] / total_demand
-                    amount_given = fraction * remaining_yield
-                    sum_amount_given += amount_given
-                    item['count'] += int(amount_given)
-                remaining_yield -= sum_amount_given
-            else:
-                break
+            index_i['count'] = n_i
 
     for c in range(c2, c3):  # efficiency plateaus
-        if remaining_yield <= 0:
-            break
-
-        new_copy_count = []
-        requested_copies = []
 
         for index_i in data:
-            #eff_03 = 0
             count_i = index_i['count']
             seq_i = index_i['seq']
             eff = index_i['eff']
-            #eff = seq_check(eff, seq_i)
             amp_i = 0.2 + eff  # very minimal amplification in plateau stage
             if amp_i < 1.0: # preventing counts decrements incase eff is less than 0.8
                 n_i = count_i
@@ -358,34 +298,15 @@ with open(fr'{PCR_DIR}/pcr_sampled.txt') as f:
                 n_i = count_i * amp_i
                 delta = n_i - count_i
 
-            requested_copies.append(delta)
-            new_copy_count.append(n_i)
             index_i['eff'] = eff
-        total_demand = sum(requested_copies)
-        if total_demand == 0:
-            break
+            index_i['count'] = n_i
 
-        if remaining_yield >= total_demand:
-            for i, item in enumerate(data):
-                item['count'] = int(new_copy_count[i])
-            remaining_yield -= total_demand
-        else:
-            if remaining_yield:
-                sum_amount_given = 0
-                for i, item in enumerate(data):
-                    fraction = requested_copies[i] / total_demand
-                    amount_given = int(fraction * remaining_yield)
-                    sum_amount_given += amount_given
-                    item['count'] += amount_given
-                remaining_yield -= sum_amount_given
-            else:
-                break
 
 # Writing back the copy counts after PCR completion
 with open(fr'{PCR_DIR}/pcr_complete.txt', "w") as f:
     f.write("sampled_count, sequence, length, efficiency_Remaining\n")
     for index in data:
-        count = index['count']
+        count = int(index['count'])
         seq = index['seq']
         length = index['length']
         eff = index['eff']
@@ -414,7 +335,7 @@ UN_CHANGED_TEXT_02 = []
 
 VALVE_HIGH = 35
 VALVE_MED = 30 # Knob for mutations
-VALVE_LOW = 25
+VALVE_LOW = 20
 VALVE_NULL = 0
 
 if args.c is not None:
@@ -438,7 +359,7 @@ if VALVE == 0:
     for sE in seq_objs:
         MUTATED_TEXT.append(sE.seq)
 
-count = 1
+count = 0
 while count < VALVE:
     MUTATED_TEXT.clear()
     for sE in seq_objs:
@@ -524,7 +445,7 @@ for copy, line in zip(copy_count, lines):
         LIST_03.append((copy,line))
 
 CHIMERAS_LIST = []
-chimeras_variants = random.randint(10,30) # <--- Knob for number of Chimeras variants
+chimeras_variants = random.randint(10,20) # <--- Knob for number of Chimeras variants
 chimeras_copy_count = 0
 for i in range(len(LIST_02)):
     old_tuple = LIST_02[i]
@@ -563,6 +484,8 @@ with open(fr'{out_file}') as f:
     sum_copies_pcr_final = sum([int(x) for x in copy_count])
 
 sum_initial_copies_pcr = sum([int(x) for x in initial_copies])
+
+print(fr"starting molecules: {starting_molecules}")
 print(f"initial_copies_pcr: {sum_initial_copies_pcr}")
 print(f"sum_copies_pcr_final: {sum_copies_pcr_final}")
 print(f"Diff:{sum_initial_copies_pcr - sum_copies_pcr_final} ")

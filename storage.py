@@ -282,7 +282,7 @@ if VALVE == 0:
     for sE in seq_objs:
         MUTATED_TEXT.append(sE.seq)
 
-count = 1
+count = 0
 while count < VALVE:  # adjust the exit condition
     MUTATED_TEXT.clear()
     for sE in seq_objs:
@@ -306,8 +306,9 @@ with open(fr'{STORAGE_DIR}/storage_file_0.txt') as f:
     MUTATED_TEXT = [line.split(",")[1].replace(" ", "").strip() for line in f if line.strip()]
 
 with open(out_file, "w") as f:
+    f.write("count, sequence, length\n")
     for copy, line in zip(MUTATED_COPY_COUNT, MUTATED_TEXT):
-        f.write(f"{copy:.0f},{line}\n")
+        f.write(f"{copy:.0f},{line},{len(line)}\n")
 
 
 if __name__ == "__main__":
