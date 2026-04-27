@@ -367,7 +367,7 @@ class Error_simulation:
             #Substituting here
             #print(f"Original Sequence: {self.seq}")
             self.seq = self.seq[:chosen_span[0]] + replacement + self.seq[chosen_span[1] + 1:]
-            print("SUBSTITUTION")
+            #print("SUBSTITUTION")
             #logging mutated position to avoid re-mutation at the same position
 
             for pos, base in zip(range(chosen_span[0], chosen_span[1] + 1), replacement):

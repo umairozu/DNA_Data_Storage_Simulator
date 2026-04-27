@@ -94,7 +94,7 @@ _p.add_argument("--mut", default = "2" , help = "Mutation intensity (0-3)")
 _p.add_argument("--c", type = lambda x: int(x) if  0 < int(x) <= 100 else _p.error("keep 0 < custom VALVE <= 100"),
                                         help = "Optional custom VALVE (0-100), it is basically a mutation knob" )
 _p.add_argument("--in_file", required = True, help="Input file name (e.g  storage_in)")
-_p.add_argument("--out_file", default = "storage_output", help = "Output file name [default is 'pcr_output'] ")
+_p.add_argument("--out_file", default = "pcr_output.txt", help = "Output file name [default is 'pcr_output'] ")
 
 
 
@@ -102,7 +102,7 @@ args = _p.parse_args()
 sampling_frac = float(args.s) / 100
 num_cycles = int(args.n)
 in_file = fr'{args.in_file}'
-out_file = fr'{PCR_DIR}/{args.out_file}.txt'
+out_file = fr'{PCR_DIR}/{args.out_file}'
 
 
 def amp_factor(eff_i):
@@ -445,7 +445,7 @@ for copy, line in zip(copy_count, lines):
         LIST_03.append((copy,line))
 
 CHIMERAS_LIST = []
-chimeras_variants = random.randint(10,20) # <--- Knob for number of Chimeras variants
+chimeras_variants = random.randint(10,30) # <--- Knob for number of Chimeras variants
 chimeras_copy_count = 0
 for i in range(len(LIST_02)):
     old_tuple = LIST_02[i]

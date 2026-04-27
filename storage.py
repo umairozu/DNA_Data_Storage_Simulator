@@ -90,7 +90,7 @@ _p.add_argument("--mut", default = "4" , help = "Mutation intensity (0-3)")
 _p.add_argument("--c", type = lambda x: int(x) if  0 < int(x) <= 30 else _p.error("keep 0 < custom VALVE <= 30"),
                                         help = "Optional custom VALVE (0-30), it is basically a mutation knob" )
 _p.add_argument("--in_file", required = True, help="Input file name (e.g  synthesis_in)")
-_p.add_argument("--out_file", default = "storage_output", help = "Output file name [default is 'storage_output'] ")
+_p.add_argument("--out_file", default = "storage_output.txt", help = "Output file name [default is 'storage_output'] ")
 
 args = _p.parse_args()
 
@@ -104,7 +104,7 @@ else:
     input_encapsulation = "True"
 
 in_file = fr'{args.in_file}'
-out_file = fr'{STORAGE_DIR}/{args.out_file}.txt'
+out_file = fr'{STORAGE_DIR}/{args.out_file}'
 
 
 raw_rate = fraction_lost_depurination(input_pH, input_temp_C, input_encapsulation, input_weeks)

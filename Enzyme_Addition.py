@@ -9,10 +9,10 @@ from GC_content import global_gc_content
 # constants / paths
 # --------------------
 BASE_DIR = fr"{os.getcwd()}"
-INPUT_PATH = fr"{BASE_DIR}/dna-fountain/test_file.tar.gz.dna"
-ORDER_PATH = fr"{BASE_DIR}/dna-fountain/test_file.tar.gz.dna_order.txt"
-FASTA_PATH = fr"{BASE_DIR}/dna-fountain/final_file.FASTA"
-ORIGINAL_SEQS_PATH = fr"{BASE_DIR}/ORIGINAL_SEQS.txt"
+#INPUT_PATH = fr"{BASE_DIR}/dna-fountain/test_file.tar.gz.dna"
+ORDER_PATH = fr"{BASE_DIR}/test_files/test_file.tar.gz.dna_order.txt"
+FASTA_PATH = fr"{BASE_DIR}/test_files/final_file.FASTA"
+ORIGINAL_SEQS_PATH = fr"{BASE_DIR}/test_files/ORIGINAL_SEQS.txt"
 
 # Users own primer's Input taken and added to the file
 _p = argparse.ArgumentParser(description="Enzyme_Addition.py run")
@@ -21,8 +21,10 @@ _p.add_argument("--pf", default="ATAAATGACCTGCCGTGCAA", help="Forward Primer")
 _p.add_argument("--pr", default="ACCGATTGTGAAATGAGCCA", help="Reverse Primer")
 _p.add_argument("--gc_min", type=float, default=0.45, help="Min gc content")
 _p.add_argument("--gc_max", type=float, default=0.55, help="Max gc content")
+_p.add_argument("--in_file", required=True, help="Input file name (e.g  test_file)")
 
 args = _p.parse_args()
+in_file = fr'{args.in_file}'
 
 def validate_primer(primer_seq, min_gc, max_gc, label):
 
@@ -92,7 +94,7 @@ def write_final_fasta(path, identifiers, oligos):
 # --------------------
 # metadata for imports
 # --------------------
-_payloads = read_payload_sequences(INPUT_PATH)
+_payloads = read_payload_sequences(in_file)
 _oligos = build_oligos(_payloads)
 
 orig_length = len(_oligos[0]) if _oligos else 0
@@ -117,7 +119,7 @@ def save_metadata():
         json.dump(metadata, f, indent=5)
 
 def prepare_enzyme_files():
-    identifiers = read_identifiers(INPUT_PATH)
+    identifiers = read_identifiers(in_file)
     write_dna_order_file(ORDER_PATH, _oligos)
     write_final_fasta(FASTA_PATH, identifiers, _oligos)
     save_metadata()
@@ -137,5 +139,5 @@ def fasta_to_txt(fasta_path, output_path):
 if __name__ == "__main__":
     
     prepare_enzyme_files()
-    fasta_to_txt(INPUT_PATH,ORIGINAL_SEQS_PATH)
+    fasta_to_txt(in_file,ORIGINAL_SEQS_PATH)
     print("Enzyme_Addition.py run")

@@ -90,12 +90,12 @@ _p = argparse.ArgumentParser(description="synthesis.py run")
 _p.add_argument("--mut", default = "2" , help = "Mutation intensity (0-3)")
 _p.add_argument("--c", type = valve_range, help = "Optional custom VALVE (0-100), it is basically a mutation knob" )
 _p.add_argument("--in_file", required=True, help="Input file name (e.g  test_file)")
-_p.add_argument("--out_file", default="synthesis_output",
+_p.add_argument("--out_file", default="synthesis_output.txt",
                 help="Output file name [default is 'synthesis_output'] ")
 
 args = _p.parse_args()
-in_file = fr'dna-fountain/{args.in_file}.tar.gz.dna_order.txt'
-out_file = fr'{args.out_file}.txt'
+in_file = fr'{args.in_file}'
+out_file = fr'{args.out_file}'
 
 VALVE_HIGH = 20
 VALVE_MED = 15
