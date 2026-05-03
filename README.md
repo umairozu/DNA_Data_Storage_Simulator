@@ -173,13 +173,13 @@ Common parameters:
 Default:
 
 ```bash
-python3 Enzyme_Addition.py
+python3 Enzyme_Addition.py --in_file <LOCATION TO INPUT FILE>
 ```
 
 Example with custom primers:
 
 ```bash
-python3 Enzyme_Addition.py --pf "FORWARD_PRIMER" --pr "REVERSE_PRIMER" --gc_min 0.45 --gc_max 0.55
+python3 Enzyme_Addition.py --pf "FORWARD_PRIMER" --pr "REVERSE_PRIMER" --gc_min 0.45 --gc_max 0.55 --in_file <LOCATION TO INPUT FILE>
 ```
 
 This creates an orderable oligo file such as:
@@ -192,7 +192,7 @@ test_file.tar.gz.dna_order.txt
 ### Step 4: Run synthesis simulation
 
 ```bash
-python3 synthesis.py --mut 1 --in_file dna-fountain/test_file.tar.gz.dna_order.txt --out_file synthesis_LOW
+python3 synthesis.py --mut 1 --in_file test_files/test_file.tar.gz.dna_order.txt --out_file synthesis_OUT.txt
 ```
 
 Mutation modes:
@@ -210,7 +210,7 @@ Mutation modes:
 ### Step 5: Run storage simulation
 
 ```bash
-python3 storage.py --temp 30 --ph 7 --week 4 --encap 1 --mut 1 --in_file synthesis/synthesis_LOW.txt --out_file storage_LOW
+python3 storage.py --temp 30 --ph 7 --week 4 --encap 1 --mut 1 --in_file synthesis/synthesis_OUT.txt --out_file storage_OUT.txt
 ```
 
 ---
@@ -218,7 +218,7 @@ python3 storage.py --temp 30 --ph 7 --week 4 --encap 1 --mut 1 --in_file synthes
 ### Step 6: Run PCR simulation
 
 ```bash
-python3 pcr.py --s 0.5 --n 30 --mut 1 --in_file storage/storage_LOW.txt --out_file pcr_LOW
+python3 pcr.py --s 0.5 --n 30 --mut 1 --in_file storage/storage_OUT.txt --out_file pcr_OUT.txt
 ```
 
 Parameters:
@@ -236,7 +236,7 @@ Parameters:
 Paired-end example:
 
 ```bash
-python3 sequencing.py --type 1 --m 2 --s 1 --t 20000 --rl 100 --mut 1 --in_file pcr/pcr_LOW.txt --order_file dna-fountain/test_file.tar.gz.dna_order.txt
+python3 sequencing.py --type 1 --m 2 --s 1 --t 20000 --rl 100 --mut 1 --in_file pcr/pcr_OUT.txt --order_file test_files/test_file.tar.gz.dna_order.txt
 ```
 
 Parameters:
