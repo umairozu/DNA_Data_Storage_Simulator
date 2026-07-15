@@ -71,8 +71,8 @@ def read_identifiers(path):
 # --------------------
 def write_dna_order_file(path, oligos):
     with open(path, "w") as file:
-        for line in oligos:
-            file.write(line + "\n")
+        for pid, line in enumerate(oligos):
+            file.write(fr'{pid} , {line}' + "\n")
 
 
 # final FASTA file creation

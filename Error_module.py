@@ -3,23 +3,27 @@ import random
 import re
 from typing import Final
 import numpy as np
-from ordered_set import OrderedSet
 from Homopolymer import homopolymer
 
 
 MUTATION_LIST: Final = ['insertion', 'deletion', 'substitution']
+BASES: Final = ('A', 'T', 'C', 'G')
+BASE_ORDS: Final = tuple(ord(base) for base in BASES)
+SPACE_ORD: Final = ord(" ")
+_CHOICE_CACHE = {}
+_REGEX_CACHE = {}
 
 class Error_simulation:
 
     # user can provide their own mutation_attributes and error rates but should be of the same format
     def __init__(self, seq, process,attribute = None,error_rate = None, seed= None):
-        self.bases = ['A', 'T', 'C', 'G']
+        self.bases = BASES
+        self._base_ord = BASE_ORDS
         self.seq = seq
         self.process = process
         self.attributes = attribute
         self.error_rates = error_rate
-        self.seed = seed if seed else np.random.seed()
-        self.visited_bases = [{"base": char, "visited": False} for char in self.seq]
+        self.seed = seed
 
                                         # IMPORTANT IMPORTANT ⚠️ ⚠️ ⚠️
 
@@ -30,11 +34,109 @@ class Error_simulation:
         # keeping visited[pos] = True in this case prevents realistic behavior.
 
 
+    @property
+    def seq(self):
+        if self._seq_cache is None:
+            self._seq_cache = self._seq.decode("ascii")
+        return self._seq_cache
+
+    @seq.setter
+    def seq(self, value):
+        if isinstance(value, bytearray):
+            self._seq = value
+            self._seq_cache = value.decode("ascii")
+        elif isinstance(value, bytes):
+            self._seq = bytearray(value)
+            self._seq_cache = value.decode("ascii")
+        else:
+            self._seq_cache = str(value)
+            self._seq = bytearray(self._seq_cache, "ascii")
+        self._visited = bytearray(len(self._seq))
+
+    @property
+    def visited_bases(self):
+        return [
+            {"base": chr(base), "visited": bool(visited)}
+            for base, visited in zip(self._seq, self._visited)
+        ]
+
+    @visited_bases.setter
+    def visited_bases(self, value):
+        visited = bytearray(1 if item.get("visited") else 0 for item in value)
+        if len(visited) < len(self._seq):
+            visited.extend(b"\x00" * (len(self._seq) - len(visited)))
+        self._visited = visited[:len(self._seq)]
+
+    def _invalidate_seq_cache(self):
+        self._seq_cache = None
+
+    def _range_bounds(self, position_range):
+        if position_range:
+            return position_range[0], position_range[1] + 1
+        return 0, len(self._seq)
+
+    def _weighted_choice(self, pattern):
+        pattern_id = id(pattern)
+        cached = _CHOICE_CACHE.get(pattern_id)
+        if cached is None or cached[0] is not pattern:
+            cached = (pattern, tuple(pattern.keys()), tuple(pattern.values()))
+            _CHOICE_CACHE[pattern_id] = cached
+        _, keys, weights = cached
+        return np.random.choice(keys, p=weights)
+
+    def _base_counts(self, start, stop):
+        counts = {base: 0 for base in self.bases}
+        valid_count = 0
+        for pos in range(start, stop):
+            base = self._seq[pos]
+            if base == SPACE_ORD:
+                continue
+            valid_count += 1
+            base_char = chr(base)
+            if base_char in counts:
+                counts[base_char] += 1
+        return counts, valid_count
+
+    def _count_valid(self, start, stop):
+        count = 0
+        for pos in range(start, stop):
+            if self._seq[pos] != SPACE_ORD:
+                count += 1
+        return count
+
+    def _find_nth_valid(self, start, stop, target_offset):
+        seen = 0
+        for pos in range(start, stop):
+            if self._seq[pos] == SPACE_ORD:
+                continue
+            if seen == target_offset:
+                return pos
+            seen += 1
+        return None
+
+    def _find_nth_base(self, start, stop, target_base, target_offset):
+        target_ord = ord(target_base)
+        seen = 0
+        for pos in range(start, stop):
+            if self._seq[pos] != target_ord:
+                continue
+            if seen == target_offset:
+                return pos
+            seen += 1
+        return None
+
+    def _choose_valid_index(self, position_range):
+        start, stop = self._range_bounds(position_range)
+        valid_count = self._count_valid(start, stop)
+        if not valid_count:
+            return None
+        return self._find_nth_valid(start, stop, random.randrange(valid_count))
+
 
     def get_attributes(self, indels_type):
         # position is "Random" or "Homopolymer" location
         try:
-            position = np.random.choice(list(indels_type["position"].keys()), p = list(indels_type["position"].values()))
+            position = self._weighted_choice(indels_type["position"])
         except KeyError:
             position = None
 
@@ -60,7 +162,7 @@ class Error_simulation:
             return self.indel(pattern,position_range,mode = 'insertion')
 
         if position == 'homopolymer':
-            poly = homopolymer(self.seq)
+            poly = homopolymer(self.seq, include_chars=False)
             if poly:
                 return self.indel_homopolymer(poly, pattern, mode = 'insertion')
         # if not position or position != random or position == homopolymer but poly is empty --> then random insertion
@@ -79,7 +181,7 @@ class Error_simulation:
             return self.indel(pattern,position_range,mode = 'deletion')
 
         if position == 'homopolymer':
-            poly = homopolymer(self.seq)
+            poly = homopolymer(self.seq, include_chars=False)
             if poly:
                 return self.indel_homopolymer(poly, pattern, mode = 'deletion')
         # if not position or position != random or position == homopolymer but poly is empty --> then random insertion
@@ -117,14 +219,14 @@ class Error_simulation:
     def indel(self, pattern, position_range, mode):
         if not pattern:
             if position_range:
-                pos = random.randrange(position_range[0], position_range[1] + 1)
-                while self.seq[pos] == " ": # if the chosen index is " ", chose a different index then
-                    pos = random.randrange(position_range[0], position_range[1] + 1)
+                pos = self._choose_valid_index(position_range)
+                if pos is None:
+                    return None
             else:
-                pos = random.randrange(len(self.seq))
+                pos = random.randrange(len(self._seq))
             return self.indel_sub_base(pos, mode)
         else:
-            target_base = np.random.choice(list(pattern.keys()), p = list(pattern.values()))
+            target_base = self._weighted_choice(pattern)
             return self.random_indel(target_base,position_range,mode)
 
     """
@@ -132,30 +234,26 @@ class Error_simulation:
     - then pass that index/ pos to def indel_sub_base for mutation based on the mode ('insertion', deletion') specified
     """
     def random_indel(self,target_base, position_range, mode, count = 0):
-        if position_range:
-            sequence_indices = range(position_range[0], position_range[1] + 1)
-        else:
-            sequence_indices = range(len(self.seq))
+        start, stop = self._range_bounds(position_range)
+        base_counts, valid_count = self._base_counts(start, stop)
 
-        valid_indices = [i for i in sequence_indices if self.seq[i] != " "]
-
-        if not valid_indices:
+        if not valid_count:
             return None ####
 
-        indices = [i for i in valid_indices if self.seq[i] == target_base]
-
-        pos = random.choice(valid_indices)
-
-        if indices:
-            pick_index = random.choice(indices)
-            return self.indel_sub_base(pick_index, mode)
-        else:
+        while True:
+            target_count = base_counts.get(target_base, 0)
+            if target_count:
+                pick_index = self._find_nth_base(start, stop, target_base, random.randrange(target_count))
+                return self.indel_sub_base(pick_index, mode)
             if count < 12: # recursively try finding a random valid index using other bases (bases chosen randomly here also)
                 target_base = random.choice(self.bases)
-                return self.random_indel(target_base,position_range,mode, count = count + 1)
+                count += 1
+                continue
+            break
 
         # if unable to find the target base from amongst the valid sequence_indices, then mutate the
         # pos = random.choice(sequence_indices) anyways
+        pos = self._find_nth_valid(start, stop, random.randrange(valid_count))
         return self.indel_sub_base(pos,mode)
 
 
@@ -175,33 +273,34 @@ class Error_simulation:
 
 
         assert mode in ("insertion", "deletion", "substitution")
-        assert  0 <= pos <= len(self.seq)
+        assert  0 <= pos <= len(self._seq)
 
-        base = random.choice(self.bases)
+        base = random.choice(self._base_ord)
         #print(base)
-        new_mutation = {"base": base, "visited": True}
 
-        if self.visited_bases[pos]["visited"] == False:
+        if self._visited[pos] == 0:
             #print(fr"Mode: {mode.upper()}")
             if mode == 'insertion':  # pre-insertion to be specific!
-                self.seq = self.seq[:pos] + base + self.seq[pos:]
-                self.visited_bases.insert(pos, new_mutation)  # not touching original base (at pos) again
+                self._seq.insert(pos, base)
+                self._visited.insert(pos, 1)  # not touching original base (at pos) again
             elif mode == 'deletion':
-                self.seq = self.seq[:pos] + " " + self.seq[pos + 1:]
-                self.visited_bases[pos] = {"base": " ", "visited": True}
+                self._seq[pos] = SPACE_ORD
+                self._visited[pos] = 1
             else:  # substitution
-                self.seq = self.seq[:pos] + base + self.seq[pos + 1:]
-                self.visited_bases[pos] = new_mutation
+                self._seq[pos] = base
+                self._visited[pos] = 1
+            self._invalidate_seq_cache()
 
         return self.seq # remove this return statement later (just for testing rn)
 
     def indel_homopolymer(self, poly, pattern, mode):
-        print(f"provided polymer: {poly}")
-        print(f"provided pattern: {pattern}")
-        poly_bases = list(OrderedSet([item['base'] for item in poly]))
-
-        # poly_bases = list(OrderedSet(poly['base']))
-        print(f"Poly bases: {poly_bases}")
+        seen_bases = set()
+        poly_bases = []
+        for item in poly:
+            base = item['base']
+            if base not in seen_bases:
+                seen_bases.add(base)
+                poly_bases.append(base)
         new_pattern = []
         new_pattern_weights = {}
 
@@ -209,7 +308,7 @@ class Error_simulation:
             return self.indel(pattern=None, position_range=None, mode=mode)
 
         for base in poly_bases:
-            if base in pattern:
+            if pattern and base in pattern:
                 new_pattern.append(base)  # this for loop is removing those bases from
                 # pattern that are not in any of our homopolymers
 
@@ -228,32 +327,34 @@ class Error_simulation:
         for base in new_pattern:
             sum_bases += pattern[base]
 
+        if not sum_bases:
+            return self.indel(pattern=None, position_range=None, mode=mode)
+
         """normalizing bases weight to 1"""
         # new_pattern_weights = {}
         for base in new_pattern:
             new_pattern_weights[base] = pattern[base] / sum_bases
 
-        print(f"new pattern: {new_pattern}")
-        print(f"new pattern weights: {new_pattern_weights}")
-
         chosen_base = np.random.choice(list(new_pattern_weights.keys()), p=list(new_pattern_weights.values()))
-        print(f"chosen base from new pattern: {chosen_base}")
 
         # poly is like [{'base': 'A', 'chars': ['A', 'A', 'A', 'A'], 'start_pos': 0, 'end_pos': 3, 'error': 0.6}]
         # check homopolymer.py for details
-        possible_mutables = [item['chars'] for item in poly if chosen_base in item['chars']]
-        print(f"possible mutables: {possible_mutables}")
-
-        chosen_mutable = random.choice(possible_mutables)  # a list here right now e.g ['T', 'T', 'T']
-        chosen_mutable = "".join(chosen_mutable)  # converted to a string
-        print(f"chosen mutable: {chosen_mutable}")
+        possible_mutables_count = 0
+        for item in poly:
+            if item['base'] == chosen_base:
+                possible_mutables_count += 1
 
         # find position of the chosen mutable from the original poly list
-        matching_entry = [entry for entry in poly if entry['chars'] == list(chosen_mutable)]
-        if matching_entry:
-            chosen_entry = random.choice(matching_entry)
-            start_pos = chosen_entry['start_pos']
-            print(f"chosen index:  {start_pos} ")
+        chosen_mutable_offset = random.randrange(possible_mutables_count)
+        seen_mutables = 0
+        start_pos = None
+        for item in poly:
+            if item['base'] != chosen_base:
+                continue
+            if seen_mutables == chosen_mutable_offset:
+                start_pos = item['start_pos']
+                break
+            seen_mutables += 1
 
         """
         base = random.choice(self.bases)
@@ -290,16 +391,12 @@ class Error_simulation:
             return self.pattern_sub(pattern, position_range)
 
     def no_pattern_sub(self, position_range = None):
-        if position_range:
-            sequence_indices = range(position_range[0], position_range[1] + 1)
-        else:
-            sequence_indices = range(len(self.seq))
-
-        valid_indices = [i for i in sequence_indices if self.seq[i] != " "]
-        if not valid_indices:
+        start, stop = self._range_bounds(position_range)
+        valid_count = self._count_valid(start, stop)
+        if not valid_count:
             return None ####
 
-        pos = random.choice(valid_indices)
+        pos = self._find_nth_valid(start, stop, random.randrange(valid_count))
 
         return self.indel_sub_base(pos, mode = 'substitution')
 
@@ -307,10 +404,7 @@ class Error_simulation:
 
 
     def pattern_sub(self, pattern, position_range):
-        if position_range:
-            sequence_indices = range(position_range[0], position_range[1] + 1)
-        else:
-            sequence_indices = range(len(self.seq))
+        start, stop = self._range_bounds(position_range)
 
         #print(sequence_indices)
 
@@ -322,11 +416,12 @@ class Error_simulation:
         if valid_indices is None:
             return None"""
 
-        motifs = pattern.keys()
-        motifs = sorted(motifs, reverse = False)
-        combined_motifs = "|".join(motifs)
-
-        motif_matcher = re.compile(combined_motifs)  # e.g; re.compile('ATCA|ATCG|GG|T')
+        motifs = tuple(sorted(pattern.keys(), reverse = False))
+        motif_matcher = _REGEX_CACHE.get(motifs)
+        if motif_matcher is None:
+            combined_motifs = "|".join(motifs)
+            motif_matcher = re.compile(combined_motifs)  # e.g; re.compile('ATCA|ATCG|GG|T')
+            _REGEX_CACHE[motifs] = motif_matcher
         #print(motif_matcher)
 
         # Now searching the sequence region specified for any matching motifs
@@ -334,27 +429,30 @@ class Error_simulation:
         # Then, randomly choosing one of those motifs and replacing it in the original sequence
 
 
-        #matches = motif_matcher.finditer(self.seq, sequence_indices.start, sequence_indices.stop)
-        matches = [{
-            'base': m.group(),
-            'start': m.start(),
-            'end' : m.end() - 1
-                    }
-            for m in motif_matcher.finditer(self.seq, sequence_indices.start, sequence_indices.stop)
-        ]
+        seq = self.seq
+        match_count = 0
+        for _ in motif_matcher.finditer(seq, start, stop):
+            match_count += 1
 
-        if matches:
+        chosen_match = None
+        if match_count:
+            chosen_match_offset = random.randrange(match_count)
+            for current_offset, match in enumerate(motif_matcher.finditer(seq, start, stop)):
+                if current_offset == chosen_match_offset:
+                    chosen_match = match
+                    break
+
+        if chosen_match:
             #print(f"All matches =\n {matches}")
 
-            chosen_match = random.choice(matches)
-            chosen_base = chosen_match['base']
-            chosen_span = [chosen_match['start'], chosen_match['end']]
+            chosen_base = chosen_match.group()
+            chosen_span = [chosen_match.start(), chosen_match.end() - 1]
             #print(f" Chosen match = {chosen_match['base']}, Chosen Span = {chosen_span}")
             #chosen_match = chosen_match['base']
 
             if type(pattern[chosen_base]) == dict:
                 #print("Dict as pattern")
-                replacement = np.random.choice(list(pattern[chosen_base].keys()), p = list(pattern[chosen_base].values()))
+                replacement = self._weighted_choice(pattern[chosen_base])
             elif type(pattern[chosen_base]) == list:
                 #print("List as pattern")
                 replacement = np.random.choice(pattern[chosen_base])
@@ -366,13 +464,13 @@ class Error_simulation:
 
             #Substituting here
             #print(f"Original Sequence: {self.seq}")
-            self.seq = self.seq[:chosen_span[0]] + replacement + self.seq[chosen_span[1] + 1:]
+            replacement_bytes = bytearray(str(replacement), "ascii")
+            self._seq[chosen_span[0]:chosen_span[1] + 1] = replacement_bytes
             #print("SUBSTITUTION")
             #logging mutated position to avoid re-mutation at the same position
 
-            for pos, base in zip(range(chosen_span[0], chosen_span[1] + 1), replacement):
-                new_mutation = {'base': base, 'visited': True}
-                self.visited_bases[pos] = new_mutation
+            self._visited[chosen_span[0]:chosen_span[1] + 1] = bytearray([1]) * len(replacement_bytes)
+            self._invalidate_seq_cache()
 
             #print(f"Substituted Sequence: {self.seq}")
             #print(self.visited_bases)
@@ -395,13 +493,22 @@ class Error_simulation:
 
     def run_mutations(self, mutation_list = MUTATION_LIST):
         #print(self.seq)
+        handlers = {
+            'insertion': self.insertion,
+            'deletion': self.deletion,
+            'substitution': self.substitution,
+        }
         for mutation_type in mutation_list:
-            error_rate = self.error_rates["raw_rate"] * self.error_rates[str(mutation_type)]
+            mutation_type = str(mutation_type)
+            error_rate = self.error_rates["raw_rate"] * self.error_rates[mutation_type]
+            if not (error_rate > 0):
+                continue
+            mutation_count = len(self._seq) if error_rate >= 1 else np.random.binomial(len(self._seq), error_rate)
+            handler = handlers[mutation_type]
             #attributes = self.get_attributes(mutation_type)
             #np.random.seed(self.seed)
-            for _ in range(len(self.seq)):
-                if np.random.random() <= error_rate:
-                    eval('self.' + mutation_type)()
+            for _ in range(mutation_count):
+                handler()
         """
         print(self.seq)
         """
@@ -418,12 +525,16 @@ class Error_simulation:
             mutation_prob = [self.error_rates['insertion'], self.error_rates['deletion'], self.error_rates['substitution']]
             chosen_mutation = np.random.choice(mutation_types, p = mutation_prob)
             attributes = {'position_range': [input_error['start_pos'], input_error['end_pos']]}
-            eval('self.' + chosen_mutation)(attributes)
+            {
+                'insertion': self.insertion,
+                'deletion': self.deletion,
+                'substitution': self.substitution,
+            }[chosen_mutation](attributes)
         return None
 
     # read important notice in Constructor for reason of this method
     def reset_visited(self):
-        self.visited_bases = [{"base": char, "visited": False} for char in self.seq]
+        self._visited = bytearray(len(self._seq))
 
 
 

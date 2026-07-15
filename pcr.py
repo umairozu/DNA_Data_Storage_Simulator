@@ -4,7 +4,6 @@ import argparse
 import os
 import random
 import re
-
 import Levenshtein
 import numpy as np
 import json
@@ -121,9 +120,9 @@ def seq_check(eff_i, sequence):
     elif gc_error <= 0.25:
         eff_i *= 0.75
     elif gc_error <= 0.40:
-        eff_i *= 0.55
+        eff_i *= 0.60
     elif gc_error <= 0.60:
-        eff_i *= 0.35
+        eff_i *= 0.40
     else:
         eff_i *= 0.20
         #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
@@ -133,28 +132,41 @@ def seq_check(eff_i, sequence):
     sim_pR = Levenshtein.ratio(primer_R, seq_pR)
 
     # dropping efficiency if mismatches at the primer sites
-    if (sim_pF and sim_pR) < 0.90:
-        eff_i *= 0.7
+    if (sim_pF and sim_pR) < 0.95:
+        eff_i *= 0.70
+    elif (sim_pF and sim_pR) < 0.90:
+        eff_i *= 0.60
     elif (sim_pF and sim_pR) < 0.80:
-        eff_i *= 0.6
-    elif (sim_pF and sim_pR) < 0.70:
-        eff_i *= 0.5
+        eff_i *= 0.50
     else:
         eff_i = eff_i
     return eff_i
 
 
 # PCR pre-filtering --> removing non_specific amplicons as a cleanup for sequencing
-with open(fr'{in_file}') as f:
-    next(f)
-    data = []
-    for line in f:
-        if "," in line:
-            count, seq, _ = line.split(",")
-            count_int = int(count.strip())
+dtype = [
+    ("pid", np.int64),
+    ("count", np.int64),
+    ("seq", object),
+]
 
-            if count_int > 0:  # Only append if count is positive
-                data.append({'count': count_int, 'seq': seq.strip()})
+with open(in_file, "r") as f:
+    next(f, None)
+
+    np_data = np.array(
+        [
+            (pid, count, seq)
+            for line in f
+            if "," in line
+            for parts in [line.strip().split(",", maxsplit=2)]
+            for pid in [int(parts[0].strip())]
+            for count in [int(parts[1].strip())]
+            for seq in [parts[2].strip()]
+            if count > 0
+        ],
+        dtype=dtype,
+    )
+
     """
     #200823,AATGGTTTACCCATA
     #count = [200823], seq [AATGGTTTACCCATA]
@@ -162,71 +174,110 @@ with open(fr'{in_file}') as f:
     count, seq = zip(*pairs)
     """
 
-dropouts = []
-filtered_lines = []
 
-for index in data:
-    count = index['count']
-    seq = index['seq']
+seqs = np_data["seq"]
+num_records = len(np_data)
 
-    pF = seq[:pF_length]
-    pR = seq[-pR_length:]
-    primer_F = primer_F
-    primer_R = primer_R
+similarity_pF = np.fromiter(
+    (
+        Levenshtein.ratio(primer_F, seq[:pF_length])
+        for seq in seqs
+    ),
+    dtype=np.float64,
+    count=num_records,
+)
 
-    similarity_pF = Levenshtein.ratio(primer_F, pF)
-    similarity_pR = Levenshtein.ratio(primer_R, pR)
-    #print(fr"Similarity  -->  pF: {similarity_pF}, pR: {similarity_pR}")
+similarity_pR = np.fromiter(
+    (
+        Levenshtein.ratio(primer_R, seq[-pR_length:])
+        for seq in seqs
+    ),
+    dtype=np.float64,
+    count=num_records,
+)
 
-    if (similarity_pF < 0.75 and similarity_pR < 0.75) or (abs(len(seq) - orig_length) > 20):
-        dropouts.append((count, seq))
-    else:
-        filtered_lines.append((count, seq))
+length_difference = np.fromiter(
+    (
+        abs(len(seq) - orig_length)
+        for seq in seqs
+    ),
+    dtype=np.int64,
+    count=num_records,
+)
+
+# True means the row is a PCR dropout.
+dropout_mask = (
+    ((similarity_pF < 0.75) & (similarity_pR < 0.75))
+    | (length_difference > 20)
+)
+
+dropouts = np_data[dropout_mask]
+filtered_lines = np_data[~dropout_mask]
 
 
-with open(fr'{PCR_DIR}/pcr_dropouts.txt', "w") as f:
-    f.write("count, sequence, length\n")
-    for c, s in dropouts:
-        l = len(s)
-        f.write(f"{c},{s},{l}\n")
 
-if len(filtered_lines) == 0:
+
+
+
+primer_dropout_mask = (
+    (similarity_pF < 0.75)
+    & (similarity_pR < 0.75)
+)
+
+length_dropout_mask = length_difference > 20
+
+print("\n--- PCR PRE-FILTER DEBUG ---")
+print(f"Input oligos:                 {len(np_data)}")
+print(f"Primer dropouts only:         "
+      f"{np.count_nonzero(primer_dropout_mask & ~length_dropout_mask)}")
+print(f"Length dropouts only:         "
+      f"{np.count_nonzero(length_dropout_mask & ~primer_dropout_mask)}")
+print(f"Primer and length dropouts:   "
+      f"{np.count_nonzero(primer_dropout_mask & length_dropout_mask)}")
+print(f"Total dropouts:               {np.count_nonzero(dropout_mask)}")
+print(f"Surviving filtered oligos:    {np.count_nonzero(~dropout_mask)}")
+print("----------------------------\n")
+
+
+
+
+
+
+with open(fr"{PCR_DIR}/pcr_dropouts.txt", "w") as f:
+    f.write("parent_id,count,sequence\n")
+
+    for row in dropouts:
+        f.write(
+            f"{row['pid']},{row['count']},{row['seq']}\n"
+        )
+
+if filtered_lines.size == 0:
     raise ValueError("PCR FAILED!!!")
 
+with open(fr"{PCR_DIR}/pcr_filtered.txt", "w") as f:
+    f.write("parent_id,count,sequence\n")
 
-with open(fr'{PCR_DIR}/pcr_filtered.txt', "w") as f:
-    f.write("count, sequence, length\n")
-    for c, s in filtered_lines:
-        l = len(s)
-        f.write(f"{c},{s},{l}\n")
+    for row in filtered_lines:
+        f.write(
+            f"{row['pid']},{row['count']},{row['seq']}\n"
+        )
 
 
 # PCR sampling
-#sampling_frac = float(input("Enter PCR sampling fraction (in %age): ")) / 100
+sampled_data = filtered_lines.copy()
 
-with open(fr'{PCR_DIR}/pcr_filtered.txt') as f:
-    next(f)
-    data = []
-    for line in f:
-        if "," in line.strip():
-            count, seq, length = line.split(",")
-            data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip() })
+sampled_data["count"] = np.random.binomial(
+    n=sampled_data["count"],
+    p=sampling_frac
+)
 
-for index in data:
-    count = index['count']
-    seq = index['seq']
-    length = index['length']
-    bnd = np.random.binomial(int(count),sampling_frac, size = int(length))
-    bnd_choice = np.random.choice(bnd)
-    index['count'] = bnd_choice
+with open(fr"{PCR_DIR}/pcr_sampled.txt", "w") as f:
+    f.write("parent_id,count,sequence\n")
 
-with open(fr'{PCR_DIR}/pcr_sampled.txt', "w") as f:
-    f.write("sampled_count, sequence, length\n")
-    for index in data:
-        count = index['count']
-        seq = index['seq']
-        length = index['length']
-        f.write(f'{count},{seq},{length}\n')
+    for row in sampled_data:
+        f.write(
+            f"{row['pid']},{row['count']},{row['seq']}\n"
+        )
 
 # PCR amplification
 #num_cycles = int(input("Enter the desired PCR cycle to run: ")) # e.g 30
@@ -234,108 +285,129 @@ c1 = num_cycles // 3 # e.g 10
 c2 = c1 + num_cycles // 3 # e.g 10 + 10 = 20
 c3 = num_cycles # e.g 30
 
-#max_yield = int(input("Enter the maximum pcr yield expected:")) # so new pool will be original molecules + pcr pool/yield
-
 E0_i = 0.9  # initial efficiency
 """Calculating per oligo Efficiency in the sample based on [PRIMER BINDING, GC CONTENT] of the oligo"""
-with open(fr'{PCR_DIR}/pcr_sampled.txt') as f:
-    next(f)
-    data = []
-    for line in f:
-        if "," in line.strip():
-            count, seq, length = line.split(",")
-            data.append({ 'count': int(count.strip()), 'seq': seq.strip(), 'length': length.strip(), 'eff': seq_check(E0_i,seq) })
 
-    starting_molecules = sum(item['count'] for item in data)
+#sampled_data = sampled_data[sampled_data["count"] > 0]
+amp_dtype = [
+    ("pid", np.int64),
+    ("count", np.float64),
+    ("seq", object),
+    ("eff", np.float64),
+]
+data = np.empty(len(sampled_data), dtype=amp_dtype)
+data["pid"] = sampled_data["pid"]
+data["count"] = sampled_data["count"]
+data["seq"] = sampled_data["seq"]
 
-    for c in range(0, c1): # on good conditions, exponential efficiency in c1
+data["eff"] = np.fromiter(
+    (
+        seq_check(E0_i, seq)
+        for seq in sampled_data["seq"]
+    ),
+    dtype=np.float64,
+    count=len(sampled_data),
+)
 
-        for index_i in data:
-            count_i = index_i['count']
-            seq_i = index_i['seq']
-            eff = index_i['eff']
+starting_molecules = sampled_data["count"].sum(dtype=np.int64)
 
-            if not (0 <= eff <= 1):
-                n_i = count_i
-                delta = 0
-            else:
-                amp_i = amp_factor(eff)
-                n_i = count_i * amp_i
-                delta = n_i - count_i
+for c in range(0, c1):  # on good conditions, exponential efficiency in c1
 
-            index_i['eff'] = eff # this could store -ve efficiency, but we are dealing with it
-            index_i['count'] = n_i
+    for index_i in data:
+        count_i = index_i['count']
+        seq_i = index_i['seq']
+        eff = index_i['eff']
 
-    for c in range(c1, c2): # efficiency become somewhat linear--> slow linear decrease
+        if not (0 <= eff <= 1):
+            n_i = count_i
+            delta = 0
+        else:
+            amp_i = amp_factor(eff)
+            n_i = count_i * amp_i
+            delta = n_i - count_i
 
-        for index_i in data:
-            count_i = index_i['count']
-            seq_i = index_i['seq']
-            eff = index_i['eff']
-            eff = eff - (eff / 10)
-            if not (0 <= eff <= 1):
-                n_i = count_i
-                delta = 0
-            else:
-                amp_i = amp_factor(eff)
-                n_i = count_i * amp_i
-                delta = n_i - count_i
+        index_i['eff'] = eff  # this could store -ve efficiency, but we are dealing with it
+        index_i['count'] = n_i
 
-            index_i['eff'] = eff
-            index_i['count'] = n_i
+for c in range(c1, c2):  # efficiency become somewhat linear--> slow linear decrease
 
-    for c in range(c2, c3):  # efficiency plateaus
+    for index_i in data:
+        count_i = index_i['count']
+        seq_i = index_i['seq']
+        eff = index_i['eff']
+        eff = eff - (eff / 10)
+        if not (0 <= eff <= 1):
+            n_i = count_i
+            delta = 0
+        else:
+            amp_i = amp_factor(eff)
+            n_i = count_i * amp_i
+            delta = n_i - count_i
 
-        for index_i in data:
-            count_i = index_i['count']
-            seq_i = index_i['seq']
-            eff = index_i['eff']
-            amp_i = 0.2 + eff  # very minimal amplification in plateau stage
-            if amp_i < 1.0: # preventing counts decrements incase eff is less than 0.8
-                n_i = count_i
-                delta = 0
-            else:
-                n_i = count_i * amp_i
-                delta = n_i - count_i
+        index_i['eff'] = eff
+        index_i['count'] = n_i
 
-            index_i['eff'] = eff
-            index_i['count'] = n_i
+for c in range(c2, c3):  # efficiency plateaus
 
+    for index_i in data:
+        count_i = index_i['count']
+        seq_i = index_i['seq']
+        eff = index_i['eff']
+        # amp_i = 0.1 + eff  # very minimal amplification in plateau stage
+        amp_i = 0.4 + eff  # very minimal amplification in plateau stage
+        if amp_i < 1.0:  # preventing counts decrements incase eff is less than 0.8
+            n_i = count_i
+            delta = 0
+        else:
+            n_i = count_i * amp_i
+            delta = n_i - count_i
+
+        index_i['eff'] = eff
+        index_i['count'] = n_i
 
 # Writing back the copy counts after PCR completion
 with open(fr'{PCR_DIR}/pcr_complete.txt', "w") as f:
-    f.write("sampled_count, sequence, length, efficiency_Remaining\n")
+    f.write("parent_id, sampled_count, sequence,efficiency_Remaining\n")
     for index in data:
+        pid = index['pid']
         count = int(index['count'])
         seq = index['seq']
-        length = index['length']
         eff = index['eff']
-        f.write(f'{count},{seq},{length},{eff:.5f}\n')
+        f.write(f'{pid},{count},{seq},{eff:.5f}\n')
 
 #Mutating oligo's and making several variants per oligo
 # around 5-10 variants randomly
 # keeping the original oligo sequence but distributing the copy counts across variants
 
-MUTATED_TEXT = []
+initial_pid = data["pid"].copy()
+initial_copies = data["count"].astype(np.int64, copy=True)
+initial_lines = data["seq"].copy()
+initial_eff = data["eff"].copy()
 
-with open(fr'{PCR_DIR}/pcr_complete.txt') as f:
-    next(f)
-    rows = [line.strip().split(",") for line in f if line.strip()]
-    initial_copies, initial_lines, initial_length, eff = zip(*rows)
+seq_objs = np.fromiter(
+    (
+        Error_simulation(
+            seq, "pcr", attribute=mutation_attributes["1"], error_rate=err_rates["1"],
+        )
+        for seq in initial_lines
+    ),
+    dtype=object,
+    count=len(initial_lines),
+)
 
-    seq_objs = [Error_simulation(seq, "pcr", attribute = mutation_attributes["1"],
-                                     error_rate = err_rates["1"])
-                    for seq in initial_lines
-                    ]
+
+# Initially contains the unchanged sequences.
+# This also correctly handles VALVE == 0.
+MUTATED_TEXT = initial_lines.copy()
 
 CHANGED_TEXT = []
 UN_CHANGED_TEXT = []
 UN_CHANGED_TEXT_02 = []
 
 
-VALVE_HIGH = 35
-VALVE_MED = 30 # Knob for mutations
-VALVE_LOW = 20
+VALVE_HIGH = 15
+VALVE_MED = 10 # Knob for mutations
+VALVE_LOW = 5
 VALVE_NULL = 0
 
 if args.c is not None:
@@ -355,150 +427,441 @@ else:
 
 print(f"Running with VALVE: {VALVE}")
 
-if VALVE == 0:
-    for sE in seq_objs:
-        MUTATED_TEXT.append(sE.seq)
+for _ in range(VALVE):
+    for i, seq_obj in enumerate(seq_objs):
+        seq_obj.run_mutations()
+        MUTATED_TEXT[i] = seq_obj.seq
 
-count = 0
-while count < VALVE:
-    MUTATED_TEXT.clear()
-    for sE in seq_objs:
-        #sE.reset_visited() # See important Notice for info
-        sE.run_mutations()
-        MUTATED_TEXT.append(sE.seq)
-    count += 1
 
 # giving each original oligo sequence 80% copy count, rest of the count will go to mutated variants and CHIMERAS
-with open(fr'{PCR_DIR}/pcr_complete_2.txt', "w") as f:
-    f.write("sampled_count, sequence, length\n")
-    for copy_count, line, length in zip(initial_copies, initial_lines,initial_length):
-        UN_CHANGED_TEXT.append((int(int(copy_count) * 0.80), line))
-        f.write(f"{int(int(copy_count) * 0.80)},{line},{length}\n")
+unchanged_counts = (initial_copies * 0.80).astype(np.int64)
 
-# giving each mutated sequence(sequences generated via Error_module.py) a 10% copy count of original sequence
-with open(fr'{PCR_DIR}/pcr_CHANGED_POOL.txt', "w") as f:
-    f.write("count, sequence, length\n")
-    for copy_count, original_line, length in zip(initial_copies, initial_lines, initial_length):
-        if original_line not in MUTATED_TEXT:
-            mutated_line = original_line
-            CHANGED_TEXT.append((int(int(copy_count) * 0.10),mutated_line)) # CORRECTIONNNNNN , handle deletion case
-            f.write(f"{int(int(copy_count) * 0.10)},{line},{length}\n")
-        else:
-            UN_CHANGED_TEXT_02.append((int(int(copy_count) * 0.10),original_line)) # if a sequence is not mutated, adding the 10% count back to the original sequence
+unchanged_dtype = [
+    ("pid", np.int64),
+    ("count", np.int64),
+    ("seq", object),
+]
+UN_CHANGED_TEXT = np.empty(
+    len(initial_lines),
+    dtype=unchanged_dtype,
+)
+
+UN_CHANGED_TEXT["pid"] = initial_pid
+UN_CHANGED_TEXT["count"] = unchanged_counts
+UN_CHANGED_TEXT["seq"] = initial_lines
+
+with open(fr"{PCR_DIR}/pcr_complete_2.txt", "w") as f:
+    f.write("parent_id,count,sequence\n")
+
+    for row in UN_CHANGED_TEXT:
+        f.write(
+            f"{row['pid']}"
+            f"{row['count']}"
+            f"{row['seq']}"
+            f"\n"
+        )
+
+
+# Giving 10% copy count to mutated sequences.
+# If no mutation occurred, return that 10% to the original sequence.
+
+ten_percent_counts = (initial_copies * 0.10).astype(np.int64)
+
+changed_mask = MUTATED_TEXT != initial_lines
+unchanged_mask = ~changed_mask
+
+variant_dtype = [
+    ("pid", np.int64),
+    ("count", np.int64),
+    ("seq", object),
+]
+
+# Sequences that actually changed
+CHANGED_TEXT = np.empty(
+    np.count_nonzero(changed_mask),
+    dtype=variant_dtype,
+)
+
+
+CHANGED_TEXT["pid"] = initial_pid[changed_mask]
+CHANGED_TEXT["count"] = ten_percent_counts[changed_mask]
+CHANGED_TEXT["seq"] = MUTATED_TEXT[changed_mask]
+
+# Sequences that did not change
+UN_CHANGED_TEXT_02 = np.empty(
+    np.count_nonzero(unchanged_mask),
+    dtype=variant_dtype,
+)
+
+
+UN_CHANGED_TEXT_02["pid"] = initial_pid[unchanged_mask]
+UN_CHANGED_TEXT_02["count"] = ten_percent_counts[unchanged_mask]
+UN_CHANGED_TEXT_02["seq"] = initial_lines[unchanged_mask]
+
+with open(fr"{PCR_DIR}/pcr_CHANGED_POOL.txt", "w") as f:
+    f.write("parent_id,count,sequence\n")
+
+    for row in CHANGED_TEXT:
+        f.write(
+            f"{row['pid']}"
+            f"{row['count']}"
+            f"{row['seq']}\n"
+        )
+
+
+
 
 
 # Making different variants per oligo, distributing 10% copy_count
 # NOTE: WE ARE DOING SUBSTITUTION ONLY as it is the predominant mutation error
+
 allowed_bases = re.compile(r"[AGCT]", re.IGNORECASE)
-LIST = []
-for copy_count, line in zip(initial_copies, initial_lines):
-    num_variant_line = random.randint(2,5)
-    random_mut_num = random.randint(1,3) # <----- we can control the amount of SUBS we want
+
+variant_records = []
+
+for parent_id, copy_count, original_line in zip(
+    initial_pid,
+    initial_copies,
+    initial_lines,
+):
+    num_variant_line = random.randint(2, 5)
+    random_mut_num = random.randint(1, 3)  # <----- we can control the amount of SUBS we want
+
     copy_count_line = int(int(copy_count) * 0.10)
-    #print(f"copy_count_line: {copy_count_line}")
-    portions = np.random.multinomial(copy_count_line, [1 / num_variant_line] * num_variant_line) # distributes copy_count_line into x portions that sums upto the copy_count_line, GOOD!
-    #print(f"Portions: {portions}")
+
+    portions = np.random.multinomial(
+        copy_count_line,
+        [1 / num_variant_line] * num_variant_line,
+    ) # distributes copy_count_line into x portions that sums upto the copy_count_line, GOOD!
+
+    line = original_line
+
     while num_variant_line > 0:
         line = line.upper()
-        for i in range(0, random_mut_num + 1):
-            random_base = random.choice(['A', 'G', 'C', 'T'])
+
+        for _ in range(0, random_mut_num + 1):
+            random_base = random.choice(["A", "G", "C", "T"])
             pos = random.randrange(len(line))
-            line = line[:pos] + random_base + line[pos + 1:]
+
+            line = (
+                line[:pos]
+                + random_base
+                + line[pos + 1:]
+            )
+
         num_variant_line -= 1
-        LIST.append((portions[num_variant_line],line))
+
+        variant_records.append(
+            (
+                int(parent_id),
+                int(portions[num_variant_line]),
+                line,
+            )
+        )
+
+ # pid, count, seq
+LIST = np.array(
+    variant_records,
+    dtype=variant_dtype,
+)
+
 
 
 print(f"Length List = {len(LIST)+len(CHANGED_TEXT)+len(UN_CHANGED_TEXT)+len(UN_CHANGED_TEXT_02)}")
+
 """
 LIST = [] # variants counts list with 10% of initial count
 CHANGED_TEXT = [] # Mutated oligos with 10% of initial count
 UN_CHANGED_TEXT = [] # original oligo with 80% of initial count
 UN_CHANGED_TEXT_02 = [] # if not Mutated, 10% of initial count back to original
 """
-with open(fr'{PCR_DIR}/pcr_pre_final.txt', "w") as f:
-    f.write("count, sequence, length\n")
+with open(fr"{PCR_DIR}/pcr_pre_final.txt", "w") as f:
+    f.write("parent_id,count,sequence,length\n")
+
     for item in LIST:
-        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+        f.write(
+            f"{item['pid']}"
+            f"{item['count']}"
+            f"{item['seq']}"
+             f"\n"
+        )
+
     for item in CHANGED_TEXT:
-        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+        f.write(
+            f"{item['pid']}"
+            f"{item['count']}"
+            f"{item['seq']}"
+             f"\n"
+        )
+
     for item in UN_CHANGED_TEXT:
-        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+        f.write(
+            f"{item['pid']}"
+            f"{item['count']}"
+            f"{item['seq']}"
+             f"\n"
+        )
+
     for item in UN_CHANGED_TEXT_02:
-        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+        f.write(
+            f"{item['pid']}"
+            f"{item['count']}"
+            f"{item['seq']}"
+            f"\n"
+        )
 
 # WORKING ON CHIMERAS NOW!!
 # reducing total copy count a little (taking 5% from pool), and distributing amongst Chimeras
 # DEFAULT: Chimeras are 5% of the total pcr reads in our simulator, Change the knob value below to increase/decrease their quantity
-LIST_02 = []
-LIST_03 = []
-with open(fr'{PCR_DIR}/pcr_pre_final.txt') as f:
-    next(f)
-    rows = [line.strip().split(",") for line in f if line.strip()]
-    copy_count, lines, _ = zip(*rows)
-    num_lines = len(lines)
 
-for copy, line in zip(copy_count, lines):
-    copy = int(copy)
-    if copy > 1000:
-        LIST_02.append((copy,line))
-    else:
-        LIST_03.append((copy,line))
+pre_final_data = np.concatenate(
+    [
+        LIST.astype(variant_dtype, copy=False),
+        CHANGED_TEXT.astype(variant_dtype, copy=False),
+        UN_CHANGED_TEXT.astype(variant_dtype, copy=False),
+        UN_CHANGED_TEXT_02.astype(variant_dtype, copy=False),
+    ]
+)
+
+high_copy_mask = pre_final_data["count"] > 1000
+
+LIST_02 = pre_final_data[high_copy_mask].copy()
+LIST_03 = pre_final_data[~high_copy_mask].copy()
+
 
 CHIMERAS_LIST = []
-chimeras_variants = random.randint(10,30) # <--- Knob for number of Chimeras variants
-chimeras_copy_count = 0
-for i in range(len(LIST_02)):
-    old_tuple = LIST_02[i]
-    copy = int(old_tuple[0])
-    new_copy_val = int(copy * 0.95)
-    LIST_02[i] = (new_copy_val, old_tuple[1])
-    chimeras_copy_count += ((5/100) * copy) #  <--- knob for Chimeras total counts (5% set here)
 
-portions = np.random.multinomial(chimeras_copy_count, [1 / chimeras_variants] * chimeras_variants) # distributing chimeras_copy_count into x portions that sums upto chimeras_copy_count
+chimeras_variants = random.randint(10, 30) # <--- Knob for number of Chimeras variants
+
+original_high_counts = LIST_02["count"].copy()
+
+LIST_02["count"] = np.fromiter(
+    (
+        int(int(copy) * 0.95)
+        for copy in original_high_counts
+    ),
+    dtype=np.int64,
+    count=len(original_high_counts),
+)
+
+chimeras_copy_count = int( sum(  (5 / 100) * int(copy)  for copy in original_high_counts  ) ) #  <--- knob for Chimeras total counts (5% set here)
+
+portions = np.random.multinomial( chimeras_copy_count,  [1 / chimeras_variants] * chimeras_variants, ) # distributing chimeras_copy_count into x portions that sums upto chimeras_copy_count
+
+chimera_sources = list(
+    zip(
+        initial_pid.tolist(),
+        initial_lines.tolist(),
+    )
+)
+
+chimera_records = []
 
 while chimeras_variants > 0:
-    seq_01, seq_02 = random.sample(initial_lines, 2)
+    (pid_01, seq_01), (pid_02, seq_02) = random.sample( chimera_sources, 2, )
+
     while len(seq_01) != len(seq_02):
-        seq_01, seq_02 = random.sample(initial_lines, 2)
+        (pid_01, seq_01), (pid_02, seq_02) = random.sample( chimera_sources,2, )
+
     pos = random.randrange(len(seq_01))
-    new_chimeras = seq_01[:pos] + seq_02[pos:]
+
+    new_chimera = ( seq_01[:pos] + seq_02[pos:] )
+
     chimeras_variants -= 1
-    CHIMERAS_LIST.append((portions[chimeras_variants],new_chimeras))
+
+    chimera_records.append(
+        (
+            int(pid_01),  # PID of the first parent
+            int(portions[chimeras_variants]),
+            new_chimera,
+        )
+    )
 
 
-with open(fr'{out_file}', "w") as f:
-    f.write("count, sequence, length\n")
+chimera_dtype = [
+    ("pid", np.int64),
+    ("count", np.int64),
+    ("seq", object),
+]
+
+CHIMERAS_LIST = np.array(
+    chimera_records,
+    dtype=chimera_dtype,
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def safe_count_sum(array):
+    """Use Python integers to avoid possible np.int64 overflow."""
+    return sum(int(value) for value in array["count"])
+
+
+# Total molecules available after PCR amplification
+available_total = sum(int(value) for value in initial_copies)
+
+# Pre-chimera allocation
+original_sequence_total = safe_count_sum(UN_CHANGED_TEXT)
+
+error_simulation_total = (
+    safe_count_sum(CHANGED_TEXT)
+    + safe_count_sum(UN_CHANGED_TEXT_02)
+)
+
+substitution_variant_total = safe_count_sum(LIST)
+
+pre_final_total = (
+    original_sequence_total
+    + error_simulation_total
+    + substitution_variant_total
+)
+
+
+# Chimera-stage totals
+high_count_before_chimeras = sum(
+    int(value) for value in original_high_counts
+)
+
+high_count_after_chimeras = safe_count_sum(LIST_02)
+low_count_total = safe_count_sum(LIST_03)
+chimera_total = safe_count_sum(CHIMERAS_LIST)
+
+final_total = (
+    high_count_after_chimeras
+    + low_count_total
+    + chimera_total
+)
+
+
+# Losses caused only by integer rounding
+split_rounding_loss = available_total - pre_final_total
+
+chimera_rounding_loss = (
+    high_count_before_chimeras
+    - high_count_after_chimeras
+    - chimera_total
+)
+
+total_loss = available_total - final_total
+
+
+print("\n--- MOLECULE COUNT AUDIT ---")
+print(f"Available after PCR:          {available_total}")
+print(f"Original-sequence bucket:     {original_sequence_total}")
+print(f"Error-simulation bucket:      {error_simulation_total}")
+print(f"Substitution-variant bucket:  {substitution_variant_total}")
+print(f"Pre-chimera total:            {pre_final_total}")
+print(f"Split rounding loss:          {split_rounding_loss}")
+print()
+print(f"High-count before chimeras:   {high_count_before_chimeras}")
+print(f"High-count after chimeras:    {high_count_after_chimeras}")
+print(f"Chimera total:                {chimera_total}")
+print(f"Low-count total:              {low_count_total}")
+print(f"Chimera rounding loss:        {chimera_rounding_loss}")
+print()
+print(f"Final total:                  {final_total}")
+print(f"Total molecule loss:          {total_loss}")
+print("----------------------------\n")
+
+
+# Consistency checks
+assert pre_final_total <= available_total, (
+    "Pre-chimera distribution exceeded available molecules"
+)
+
+assert (
+    high_count_after_chimeras + chimera_total
+    <= high_count_before_chimeras
+), "Chimera distribution exceeded the high-count pool"
+
+assert final_total <= available_total, (
+    "Final molecule count exceeded amplified molecules"
+)
+
+assert pre_final_total == (
+    high_count_before_chimeras + low_count_total
+), "High/low partition does not match the pre-final pool"
+
+
+
+
+
+
+
+
+
+
+
+
+
+with open(out_file, "w") as f:
+    f.write("parent_id,count,sequence\n")
+
+    # High-copy sequences after the 5% reduction
     for item in LIST_02:
-        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+        f.write(
+            f"{item['pid']},"
+            f"{item['count']},"
+            f"{item['seq']}"
+            f"\n"
+        )
+
+    # Chimera sequences
     for item in CHIMERAS_LIST:
-        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+        f.write(
+            f"{item['pid']},"
+            f"{item['count']},"
+            f"{item['seq']}"
+            f"\n"
+        )
+
     for item in LIST_03:
-        f.write(f"{item[0]},{item[1]},{len(item[1])}\n")
+        f.write(
+            f"{item['pid']},"
+            f"{item['count']},"
+            f"{item['seq']}"
+            f"\n"
+        )
 
-print(f"final file length: {len(LIST_02)} + {len(LIST_03)} + {len(CHIMERAS_LIST)}")
+#print(f"final file length: {len(LIST_02)} + {len(LIST_03)} + {len(CHIMERAS_LIST)}")
 
-with open(fr'{out_file}') as f:
-    next(f)
-    rows = [line.strip().split(",") for line in f if line.strip()]
-    copy_count, _, _ = zip(*rows)
-    sum_copies_pcr_final = sum([int(x) for x in copy_count])
+combined_array = np.concatenate((LIST_02, LIST_03, CHIMERAS_LIST))
+print(f"final file length: {len(combined_array)}")
 
-sum_initial_copies_pcr = sum([int(x) for x in initial_copies])
+sum_copies_pcr_final = (
+    LIST_02["count"].sum(dtype=np.int64)
+    + CHIMERAS_LIST["count"].sum(dtype=np.int64)
+    + LIST_03["count"].sum(dtype=np.int64)
+)
 
-print(fr"starting molecules: {starting_molecules}")
-print(f"initial_copies_pcr: {sum_initial_copies_pcr}")
-print(f"sum_copies_pcr_final: {sum_copies_pcr_final}")
-print(f"Diff:{sum_initial_copies_pcr - sum_copies_pcr_final} ")
+sum_initial_copies_pcr = initial_copies.sum(dtype=np.int64)
 
+print(f"starting molecules: {int(starting_molecules)}")
+#print(f"initial_copies_pcr: {int(sum_initial_copies_pcr)}")
+print(f"sum_copies_pcr_final: {int(sum_copies_pcr_final)}")
+print(
+    f"Diff: "
+    f"{int(sum_initial_copies_pcr - sum_copies_pcr_final)}"
+)
 
 
 if __name__ == "__main__":
-    os.remove(fr'{PCR_DIR}/pcr_dropouts.txt')
-    os.remove(fr'{PCR_DIR}/pcr_filtered.txt')
-    os.remove(fr'{PCR_DIR}/pcr_sampled.txt')
-    os.remove(fr'{PCR_DIR}/pcr_complete.txt')
-    os.remove(fr'{PCR_DIR}/pcr_complete_2.txt')
-    os.remove(fr'{PCR_DIR}/pcr_CHANGED_POOL.txt')
-    os.remove(fr'{PCR_DIR}/pcr_pre_final.txt')
+    #os.remove(fr'{PCR_DIR}/pcr_dropouts.txt')
+    #os.remove(fr'{PCR_DIR}/pcr_filtered.txt')
+    #os.remove(fr'{PCR_DIR}/pcr_sampled.txt')
+    #os.remove(fr'{PCR_DIR}/pcr_complete.txt')
+    #os.remove(fr'{PCR_DIR}/pcr_complete_2.txt')
+    #os.remove(fr'{PCR_DIR}/pcr_CHANGED_POOL.txt')
+    #os.remove(fr'{PCR_DIR}/pcr_pre_final.txt')
 
     print("Pcr.py run completed")

@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import random
-
 import numpy as np
 from Error_module import Error_simulation
 
@@ -98,8 +97,8 @@ in_file = fr'{args.in_file}'
 out_file = fr'{args.out_file}'
 
 VALVE_HIGH = 20
-VALVE_MED = 15
-VALVE_LOW = 10
+VALVE_MED = 10
+VALVE_LOW = 5
 VALVE_NULL = 0
 
 if args.c is not None:
@@ -121,7 +120,14 @@ print(f"Running with VALVE: {VALVE}")
 
 
 with open(fr'{BASE_DIR}/{in_file}') as f:
-    np_LINES = np.array(f.readlines())
+    rows = [line.strip().split(",") for line in f if line.strip()]
+    columns = list(zip(*rows))
+
+    pid = list(columns[0])
+    sequences = list(columns[1])
+
+    np_pid_LINES = np.array(pid)
+    np_LINES = np.array(sequences)
 
 counts_list = [copy_distribution(line) for line in np_LINES]
 
@@ -132,8 +138,8 @@ eff = efficiency()
 np_COUNT2 = (np_COUNT * eff).astype(int)
 
 with open(fr'{SYNTHESIS_DIR}/file1.txt', "w+") as f:
-    for count, line in zip(np_COUNT2, np_LINES):
-        f.write(f"{count},{line}\n")
+    for pid, count, line in zip(np_pid_LINES, np_COUNT2, np_LINES):
+        f.write(f"{pid},{count},{line}\n")
     f.seek(0)
     rows_01 = [line.strip().split(",") for line in f if line.strip()]
 
@@ -142,10 +148,6 @@ seq_objs = [Error_simulation(seq, "synthesis", attribute=mutation_attributes["3"
             ]
 
 MUTATED_TEXT = []
-
-if VALVE == 0:
-    for sE in seq_objs:
-        MUTATED_TEXT.append(sE.seq)
 
 count = 0
 while count < VALVE:
@@ -156,27 +158,48 @@ while count < VALVE:
         MUTATED_TEXT.append(sE.seq)
     count += 1
 
-np_COUNT3 = (np_COUNT * (1 - eff)).astype(int)
-np_MUTATED = np.array(MUTATED_TEXT)
+rows_02 = []
 
-with open(fr'{SYNTHESIS_DIR}/file2.txt', "w+") as f:
-    for count, line in zip(np_COUNT3, np_MUTATED):
-        f.write(f"{count},{line.split()[0]}\n")
-    f.seek(0)
-    rows_02 = [line.strip().split(",") for line in f if line.strip()]
+if VALVE != "0":
+    np_COUNT3 = (np_COUNT * (1 - eff)).astype(int)
+    np_MUTATED = np.array(MUTATED_TEXT)
+
+    with open(fr'{SYNTHESIS_DIR}/file2.txt', "w+") as f:
+        for parent_id, mutated_count, original_seq, mutated_seq in zip(
+                np_pid_LINES,
+                np_COUNT3,
+                np_LINES,
+                np_MUTATED
+        ):
+            # Writing only sequences that are actually mutated
+            if mutated_seq != original_seq:
+                cleaned_mutated_seq = mutated_seq.split()[0]
+
+                f.write(
+                    f"{parent_id},{mutated_count},{cleaned_mutated_seq}\n"
+                )
+
+        f.seek(0)
+        rows_02 = [
+            line.strip().split(",", maxsplit=2)
+            for line in f
+            if line.strip()
+        ]
 
 combined_rows = rows_01 + rows_02
 random.shuffle(combined_rows)
 
 with open(fr'{SYNTHESIS_DIR}/{out_file}', "w") as f:
+    f.write(f"parent_id, count, sequence" +"\n")
     for row in combined_rows:
-        f.write(f"{row[0]},{row[1]}\n")
+        f.write(f"{row[0]},{row[1]},{row[2]}\n")
 
 if __name__ == "__main__":
 
-    os.remove(fr'{SYNTHESIS_DIR}/file1.txt')
-    os.remove(fr'{SYNTHESIS_DIR}/file2.txt')
+    #os.remove(fr'{SYNTHESIS_DIR}/file1.txt')
+    #os.remove(fr'{SYNTHESIS_DIR}/file2.txt')
 
+    """
     print(sum(np_COUNT2))
     print("   +   ")
     print(sum(np_COUNT3))
@@ -184,6 +207,7 @@ if __name__ == "__main__":
     print(sum(np_COUNT2 + np_COUNT3))
     print(sum(np_COUNT))
 
+    """
     print("Synthesis.py run completed")
 
 

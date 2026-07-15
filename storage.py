@@ -248,13 +248,23 @@ mutation_attributes = {
 }
 
 with open(fr'{in_file}') as f:
-    initial_lines = [line.split(",")[1].strip() for line in f if line.strip()]
-    f.seek(0)
-    initial_copies = [line.split(",")[0].strip() for line in f if line.strip()]
-    seq_objs = [Error_simulation(seq, "storage", attribute=mutation_attributes["15"],
-                                 error_rate=err_rates["15"])
-                for seq in initial_lines
-                ]
+    next(f)
+
+    rows = [
+        line.strip().split(",", maxsplit=2)
+        for line in f
+        if line.strip()
+    ]
+
+parent_ids = [row[0].strip() for row in rows]
+initial_copies = [int(row[1].strip()) for row in rows]
+initial_lines = [row[2].strip() for row in rows]
+
+seq_objs = [Error_simulation(seq, "storage", attribute=mutation_attributes["15"],
+                             error_rate=err_rates["15"])
+            for seq in initial_lines
+            ]
+
 VALVE_HIGH = 6
 VALVE_MED = 4
 VALVE_LOW = 2
@@ -296,22 +306,23 @@ for copy in initial_copies:
 
 # Replacing copy count and mutated lines in file after degradation
 with open(fr'{STORAGE_DIR}/storage_file_0.txt', "w") as f:
-    for copy, line in zip(MUTATED_COPY_COUNT, MUTATED_TEXT):
-        f.write(f"{copy:.0f},{line}\n")
+    for pid , copy, line in zip(parent_ids, MUTATED_COPY_COUNT, MUTATED_TEXT):
+        f.write(f"{pid},{copy:.0f},{line}\n")
 
 FRAGMENT_COUNT = 0
 
 # Removing spaces in a line and making it shorter instead of throwing the line away
 with open(fr'{STORAGE_DIR}/storage_file_0.txt') as f:
-    MUTATED_TEXT = [line.split(",")[1].replace(" ", "").strip() for line in f if line.strip()]
+    MUTATED_TEXT = [line.split(",")[2].replace(" ", "").strip() for line in f if line.strip()]
 
 with open(out_file, "w") as f:
-    f.write("count, sequence, length\n")
-    for copy, line in zip(MUTATED_COPY_COUNT, MUTATED_TEXT):
-        f.write(f"{copy:.0f},{line},{len(line)}\n")
+    f.write("parent_id, count, sequence\n")
+    for pid, copy, line in zip(parent_ids, MUTATED_COPY_COUNT, MUTATED_TEXT):
+        f.write(f"{pid},{copy:.0f},{line}\n")
 
+print(f"Output oligos:                  {len(parent_ids)}")
 
 if __name__ == "__main__":
 
-    os.remove(fr'{STORAGE_DIR}/storage_file_0.txt')
+    #os.remove(fr'{STORAGE_DIR}/storage_file_0.txt')
     print("Storage.py run completed")
