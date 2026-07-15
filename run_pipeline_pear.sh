@@ -51,4 +51,4 @@ PY
 echo "Calculated -n value: ${N_VALUE}"
 
 echo "Step 10: Running DNA Fountain Decoder..."
-python decode.py -f ../pear_files/decoder_input.seq -n "${N_VALUE}" -d 4 --size 16 -m 3 --gc 0.05 --rs 5 --delta 0.05 --c_dist 0.1 --out ../test_files/decoded_test_file.tar.gz
+python decode.py -f ../pear_files/decoder_input.seq -n "${N_VALUE}" -d 4 --size 16 -m 3 --gc 0.05 --rs 5 --delta 0.05 --out ../test_files/decoded_test_file.tar.gz
