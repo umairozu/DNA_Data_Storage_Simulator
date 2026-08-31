@@ -28,8 +28,9 @@ from Bio import Align
 from Bio.Seq import Seq
 
 
-err_rates = {"1": {"raw_rate": 0.0021, "substitution": 0.81, "deletion": 0.0024, "insertion": 0.0013},
-             "2": {"raw_rate": 0.0032, "substitution": 0.79, "deletion": 0.0018, "insertion": 0.0011},
+err_rates = {"1": {"raw_rate": 0.0021, "substitution": 0.996, "deletion": 0.0024, "insertion": 0.0013},
+             "2": {"raw_rate": 0.0032, "substitution": 0.997, "deletion": 0.0018, "insertion": 0.0011},
+             #"1": {"raw_rate": 0.0010, "substitution": 0.995, "deletion": 0.003, "insertion": 0.003},# Illumia MiSeq SE, PE from Grass et al.
              "3": {"raw_rate": 0.02, "substitution": 0.75, "deletion": 0.20, "insertion": 0.05},
              "4": {"raw_rate": 0.14, "substitution": 0.37, "deletion": 0.21, "insertion": 0.42},
              "5": {"raw_rate": 0.2, "substitution": 0.48, "deletion": 0.37, "insertion": 0.15},
@@ -112,65 +113,13 @@ _p.add_argument("--order_file", required = True, help="original dna order file")
 args = _p.parse_args()
 mode = args.type
 method = args.m
-SAMPLING_FRAC = float(args.s)
+SAMPLING_FRAC = float(args.s) / 100.0
 TARGET_READS = int(args.t)
 READ_LENGTH = int(args.rl)
 in_file = fr'{args.in_file}'
 order_file = fr'{args.order_file}'
 
 MUTATED_TEXT = []
-"""
-mode = input("Enter Sequencing Mode:  --help [1. Illumina]\n")
-assert mode in ["1", "2", "3"]
-if mode == "1":
-    method = input("Enter method for illumina sequencing:  --help [1. Single-end, 2. Paired-end]\n")
-    assert method in ["1", "2"]
-elif mode == "2":
-    method = input("Enter method for PacBio sequencing:  --help [3. CCS, 4. Subread]\n")
-    assert method in ["3", "4"]
-elif mode == "3":
-    method = input("Enter method for Nanopore sequencing:  --help [5. 1D, 6. 2D]\n")
-    assert method in ["5", "6"]
-else:
-    mode = "1"
-    method = "1"
-    print("Default sequencing method chosen [illumina single-end sequencing]")
-
-    # sampling for sequencing
-while True:
-    user_input = input("Enter sequencing sampling fraction (0-100%): \n")
-
-    try:
-        value = float(user_input)
-        if 0 <= value <= 100:
-            SAMPLING_FRAC = value / 100
-            break
-        else:
-            print("Please enter a number between 0 and 100.")
-    except ValueError:
-        print("Invalid input. Please enter a numerical value (e.g., 5.5).")
-
-    # target_reads & READ_LENGTH input
-while True:
-    user_input02 = input("Enter a number for total reads required (e.g 100K, 10M etc): \n")
-    user_input03 = input("Enter a number for Read Length (e.g 120, 150 etc): \n")
-    try:
-        value02 = int(user_input02)
-        value03 = int(user_input03)
-        if value02 and value03:
-            TARGET_READS = value02
-            READ_LENGTH = value03
-            break
-        else:
-            print("Please enter a number greater than 0.")
-    except ValueError:
-        print("Invalid input. Please enter a numerical value (e.g., 5.5).")"""
-
-
-
-
-
-#############################################
 
 # PCR input format:
 # parent_id,count,sequence
@@ -209,18 +158,11 @@ with open(in_file) as f:
             )
         )
 
-data = np.array(
-    input_records,
-    dtype=input_dtype,
-)
+data = np.array( input_records, dtype=input_dtype,)
 
-POOL_COUNT = int(
-    data["count"].sum(dtype=np.int64)
-)  # total molecule in input pcr file
+POOL_COUNT = int( data["count"].sum(dtype=np.int64) )  # total molecule in input pcr file
 
 # Collecting original oligo's given for order (input is .dna_order file from Enzyme_Addition.py class)
-# Order-file format:
-# parent_id , sequence
 
 order_oligos = []
 
@@ -502,22 +444,23 @@ LIST_02["length"] = np.fromiter(
 # (parent, sampled_count, child_pF, child_insert, child_pR, length)
 
 # Use only positive sampled counts to construct multinomial weights.
-positive_counts = LIST_02["count"][LIST_02["count"] > 0]
+positive_mask = LIST_02["count"] > 0
+sequencing_pool = LIST_02[positive_mask]
 
-weights = positive_counts.astype(float)
-weights = weights / weights.sum()
+weights = sequencing_pool["count"].astype(float)
+weights /= weights.sum()
 
 read_allocations = np.random.multinomial(
     TARGET_READS,
     weights,
-) # allocating how many reads each template gets
+)# allocating how many reads each template gets
 
 
 # generating sequencing reads for the chosen method
 READ_SE = []
 READ_PE = []
 
-for item, n_reads in zip(LIST_02, read_allocations):
+for item, n_reads in zip(sequencing_pool, read_allocations):
     pF = item["pF"]
     insert = item["insert"]
     pR = item["pR"]
@@ -662,7 +605,7 @@ VALVE_MAP = {
     "0": 0,
     "1": 1,
     "2": 2,
-    "3": 3,
+    "3": 4,
 }
 
 if args.c is not None:

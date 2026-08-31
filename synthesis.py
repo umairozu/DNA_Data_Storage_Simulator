@@ -15,7 +15,8 @@ err_rates = {
              "6": {"raw_rate": 0.00033, "substitution": 0.2, "deletion": 0.6, "insertion": 0.2}, #Nuclease-based error correction
              "7": {"raw_rate": 0.000025, "substitution": 0.2, "deletion": 0.6, "insertion": 0.2}, #ErrASE
              "8": {"raw_rate": 0.0004, "substitution": 0.2, "deletion": 0.6, "insertion": 0.2}, #Oligo Hybridization based error correction
-             "9": {"raw_rate": 0, "substitution": 0.3, "deletion": 0.3, "insertion": 0.3} #None
+             "9": {"raw_rate": 0.0050, "substitution": 0.16, "deletion": 0.75, "insertion": 0.09}, # CustomArray synthesis used by Grass et al.
+             "10": {"raw_rate": 0, "substitution": 0.3, "deletion": 0.3, "insertion": 0.3} #None
              }
 
 mutation_attributes = {
@@ -43,8 +44,11 @@ mutation_attributes = {
                         #Oligo Hybridization based error correction
                         "8": {"deletion": {"pattern": {"A": 0.4, "C": 0.2, "G": 0.2, "T": 0.2}, "position": {"homopolymer": 0, "random": 1}}, "insertion": {"pattern": {"A": 0.25, "C": 0.25, "G": 0.25, "T": 0.25}, "position": {"homopolymer": 0, "random": 1}}, "substitution": {"pattern": {}}},
 
+                        # CustomArray phosphoramidite array synthesis
+                        "9": {"deletion": {"pattern": {"A": 0.25, "C": 0.25, "G": 0.25, "T": 0.25}, "position": {"homopolymer": 0.0, "random": 1.0,}}, "insertion": {"pattern": {"A": 0.25, "C": 0.25, "G": 0.25, "T": 0.25}, "position": { "homopolymer": 0.0, "random": 1.0}}, "substitution": {"pattern": {"A": { "C": 1.0 / 3.0, "G": 1.0 / 3.0, "T": 1.0 / 3.0}, "C": { "A": 1.0 / 3.0, "G": 1.0 / 3.0, "T": 1.0 / 3.0}, "G": { "A": 1.0 / 3.0, "C": 1.0 / 3.0, "T": 1.0 / 3.0}, "T": { "A": 1.0 / 3.0, "C": 1.0 / 3.0, "G": 1.0 / 3.0}}}},
+
                         #None
-                        "9": {"deletion": {"position": {"homopolymer": 0.0, "random": 1}, "pattern": {"G": 0.2, "C": 0.2, "A": 0.4, "T": 0.2}},"insertion": {"position": {"homopolymer": 0, "random": 1},"pattern": {"A": 0.25, "T": 0.25, "C": 0.25, "G": 0.25}},"substitution": {}}
+                        "10": {"deletion": {"position": {"homopolymer": 0.0, "random": 1}, "pattern": {"G": 0.2, "C": 0.2, "A": 0.4, "T": 0.2}},"insertion": {"position": {"homopolymer": 0, "random": 1},"pattern": {"A": 0.25, "T": 0.25, "C": 0.25, "G": 0.25}},"substitution": {}}
 
                         }
 
@@ -73,7 +77,7 @@ def copy_distribution(seqs, avg_copy_oligo=1e8, k=35):
 
     p = k / (k + avg_copy_oligo)
 
-    oligo_count = np.max(np.random.negative_binomial(k, p, size = len(seqs)))
+    oligo_count = np.random.negative_binomial(k, p)
     if oligo_count == 0:
         print(oligo_count)
     return oligo_count
@@ -196,18 +200,9 @@ with open(fr'{SYNTHESIS_DIR}/{out_file}', "w") as f:
 
 if __name__ == "__main__":
 
-    #os.remove(fr'{SYNTHESIS_DIR}/file1.txt')
-    #os.remove(fr'{SYNTHESIS_DIR}/file2.txt')
+    os.remove(fr'{SYNTHESIS_DIR}/file1.txt')
+    os.remove(fr'{SYNTHESIS_DIR}/file2.txt')
 
-    """
-    print(sum(np_COUNT2))
-    print("   +   ")
-    print(sum(np_COUNT3))
-    print("------------")
-    print(sum(np_COUNT2 + np_COUNT3))
-    print(sum(np_COUNT))
-
-    """
     print("Synthesis.py run completed")
 
 

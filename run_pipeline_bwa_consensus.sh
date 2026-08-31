@@ -59,7 +59,12 @@ else
 fi
 
 echo "Step 2: Building BWA reference from ${ORDER_FILE}..."
-awk '{print ">oligo_" NR "\n" $0}' "$ORDER_FILE" > bwa_files/oligo_ref.fa
+awk -F',' '{
+    gsub(/[[:space:]]/, "", $1)
+    gsub(/[[:space:]]/, "", $2)
+    print ">oligo_" $1
+    print $2
+}' "$ORDER_FILE" > bwa_files/oligo_ref.fa
 "${BWA_BIN}" index bwa_files/oligo_ref.fa
 
 echo "Step 3: Aligning trimmed reads with ${BWA_BIN}..."

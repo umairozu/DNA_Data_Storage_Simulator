@@ -9,8 +9,8 @@ from GC_content import global_gc_content
 # constants / paths
 # --------------------
 BASE_DIR = fr"{os.getcwd()}"
-#INPUT_PATH = fr"{BASE_DIR}/dna-fountain/test_file.tar.gz.dna"
-ORDER_PATH = fr"{BASE_DIR}/test_files/test_file.tar.gz.dna_order.txt"
+# INPUT_PATH = fr"{BASE_DIR}/dna-fountain/test_file.tar.gz.dna"
+# ORDER_PATH = fr"{BASE_DIR}/test_files/test_file.tar.gz.dna_order.txt"
 FASTA_PATH = fr"{BASE_DIR}/test_files/final_file.FASTA"
 ORIGINAL_SEQS_PATH = fr"{BASE_DIR}/test_files/ORIGINAL_SEQS.txt"
 
@@ -22,47 +22,68 @@ _p.add_argument("--pr", default="ACCGATTGTGAAATGAGCCA", help="Reverse Primer")
 _p.add_argument("--gc_min", type=float, default=0.45, help="Min gc content")
 _p.add_argument("--gc_max", type=float, default=0.55, help="Max gc content")
 _p.add_argument("--in_file", required=True, help="Input file name (e.g  test_file)")
+_p.add_argument("--out_file", required=False, default=fr"{BASE_DIR}/test_files/test_file.tar.gz.dna_order.txt",
+                help="output order file")
 
 args = _p.parse_args()
 in_file = fr'{args.in_file}'
+out_file = fr'{args.out_file}'
+
 
 def validate_primer(primer_seq, min_gc, max_gc, label):
-
     if not re.fullmatch(r'^[ACGTacgt]+$', primer_seq):
         _p.error(f"{label} contains invalid characters!")
 
     gc_content = global_gc_content(primer_seq) / 100
-    print(f"{label} GC content: {gc_content}")
+    print(fr"{label} GC content: {gc_content:.2f}")
 
     if not (min_gc <= gc_content <= max_gc):
         _p.error(f"{label} ({primer_seq}) fails GC bounds ({min_gc}-{max_gc})")
 
     return primer_seq.upper()
 
+
 primer_F = validate_primer(args.pf, args.gc_min, args.gc_max, "Forward Primer")
 primer_R = validate_primer(args.pr, args.gc_min, args.gc_max, "Reverse Primer")
 
-
 print("Valid Inputs --> You may proceed to synthesis.py")
+
 
 # --------------------
 # read helpers
 # --------------------
 def read_payload_sequences(path):
-    lines = []
+    sequences = []
+
     with open(path) as file:
         for line in file:
-            if line and line[0] != ">":
-                lines.append(line.strip())
-    return lines
+            line = line.strip()
+
+            if not line:
+                continue
+
+            if line.startswith(">"):
+                continue
+
+            sequences.append(line)
+
+    return sequences
 
 
 def read_identifiers(path):
     identifiers = []
+
     with open(path) as file:
         for line in file:
-            if line and line[0] == ">":
-                identifiers.append(line)
+            line = line.strip()
+
+            if line.startswith(">"):
+                identifiers.append(line + "\n")
+
+    if not identifiers:
+        payloads = read_payload_sequences(path)
+        identifiers = [f">seq_{i}\n" for i in range(len(payloads))]
+
     return identifiers
 
 
@@ -83,6 +104,7 @@ def write_dna_order_file(path, oligos):
 # --------------------
 def build_oligos(payloads):
     return [primer_F + seq + primer_R for seq in payloads]
+
 
 def write_final_fasta(path, identifiers, oligos):
     with open(path, "w") as file:
@@ -118,26 +140,23 @@ def save_metadata():
     with open(fr"{BASE_DIR}/metadata.json", "w") as f:
         json.dump(metadata, f, indent=5)
 
+
 def prepare_enzyme_files():
     identifiers = read_identifiers(in_file)
-    write_dna_order_file(ORDER_PATH, _oligos)
+    write_dna_order_file(out_file, _oligos)
     write_final_fasta(FASTA_PATH, identifiers, _oligos)
     save_metadata()
 
-def fasta_to_txt(fasta_path, output_path):
-    sequences = []
-    with open(fasta_path) as file:
-        for line in file:
-            if '>' not in line:
-                sequences.append(line)
 
-    with open(output_path, 'w') as file:
-        for item in sequences:
-            file.write(fr'{item}')
+def fasta_to_txt(input_path, output_path):
+    sequences = read_payload_sequences(input_path)
+
+    with open(output_path, "w") as file:
+        for sequence in sequences:
+            file.write(sequence + "\n")
 
 
 if __name__ == "__main__":
-    
     prepare_enzyme_files()
-    fasta_to_txt(in_file,ORIGINAL_SEQS_PATH)
+    fasta_to_txt(in_file, ORIGINAL_SEQS_PATH)
     print("Enzyme_Addition.py run")
