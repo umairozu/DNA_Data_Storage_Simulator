@@ -1,0 +1,1387 @@
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & SYSTEM OVERVIEW
+--------------------------------------------------------------------------------
+Modern distributed architectures require robust monitoring, scalable infrastructure,
+and fault-tolerant execution pipelines. This document provides a full overview of the
+enterprise compute cluster, including hardware specifications, bandwidth metrics,
+system event logs, and operational guidelines.
+
+Key Objectives:
+- Ensure 99.999% availability across primary and secondary data center regions.
+- Maintain sub-10ms response latency for high-frequency database read operations.
+- Provide automated failover mechanisms for key microservices and ingress routers.
+- Enable end-to-end encryption for all inter-service communications using TLS 1.3.
+
+The underlying infrastructure utilizes Kubernetes clusters across three availability zones,
+interconnected via dedicated fiber interconnects. Data persistence is handled via a hybrid
+architecture combining NVMe-backed relational databases with distributed key-value caches.
+
+
+2. ARCHITECTURAL TOPOLOGY & NETWORK SCHEMATICS
+--------------------------------------------------------------------------------
+The network is partitioned into three distinct tiers:
+
+Tier 1: Edge Router & Ingress Layer
+- Dual Cloudflare Magic Transit pipelines with automated DDoS mitigation.
+- NGINX Ingress Controllers handling SSL termination and rate limiting.
+- Internal BGP routing tables configured for shortest-path path optimization.
+
+Tier 2: Application Compute Layer
+- 64 worker nodes running Linux Kernel 6.1 LTS.
+- Dynamic pod auto-scaling (HPA) configured with 70% CPU and memory thresholds.
+- Service mesh managed by Istio with strict mTLS authentication.
+
+Tier 3: Persistence & Storage Layer
+- Primary PostgreSQL cluster with synchronous replication to standby node.
+- Redis Cluster (6 shards, 12 replicas) for session state and dynamic caching.
+- Distributed object store (S3 API compatible) for long-term document retention.
+
+
+3. COMPONENT SPECIFICATIONS & HARDWARE PROFILES
+--------------------------------------------------------------------------------
+Node Type        CPU Cores   RAM (GB)   Storage Type          Network Speed
+--------------------------------------------------------------------------------
+master-node-01   32 Cores    128 GB     500 GB NVMe PCIe 4    10 Gbps
+master-node-02   32 Cores    128 GB     500 GB NVMe PCIe 4    10 Gbps
+master-node-03   32 Cores    128 GB     500 GB NVMe PCIe 4    10 Gbps
+worker-node-01   64 Cores    256 GB     2 TB NVMe PCIe 4      25 Gbps
+worker-node-02   64 Cores    256 GB     2 TB NVMe PCIe 4      25 Gbps
+worker-node-03   64 Cores    256 GB     2 TB NVMe PCIe 4      25 Gbps
+worker-node-04   64 Cores    256 GB     2 TB NVMe PCIe 4      25 Gbps
+db-primary-01    128 Cores   512 GB     8 TB Enterprise SSD   40 Gbps
+db-replica-01    128 Cores   512 GB     8 TB Enterprise SSD   40 Gbps
+cache-shard-01   32 Cores    256 GB     1 TB NVMe PCIe 4      25 Gbps
+cache-shard-02   32 Cores    256 GB     1 TB NVMe PCIe 4      25 Gbps
+--------------------------------------------------------------------------------
+
+6. SYSTEM EVENT LOGS & DIAGNOSTIC TRACES
+--------------------------------------------------------------------------------
+[TIMESTAMP]            [LEVEL]   [MODULE]       [MESSAGE]
+--------------------------------------------------------------------------------
+2026-07-23T10:00:00.000Z [INFO]   [auth-service] User session validated successfully. uid=usr_000000 ip=192.168.1.1
+2026-07-23T10:00:01.037Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:00:02.074Z [INFO]   [ingress-gw] GET /api/v2/resource/1002 status=200 duration=14ms
+2026-07-23T10:00:03.111Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:00:04.148Z [INFO]   [worker-proc] Job #80004 processed successfully in queue 'default'
+2026-07-23T10:00:05.185Z [INFO]   [auth-service] User session validated successfully. uid=usr_000065 ip=192.168.1.6
+2026-07-23T10:00:06.222Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:00:07.259Z [INFO]   [ingress-gw] GET /api/v2/resource/1007 status=200 duration=19ms
+2026-07-23T10:00:08.296Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:00:09.333Z [INFO]   [worker-proc] Job #80009 processed successfully in queue 'default'
+2026-07-23T10:00:10.370Z [INFO]   [auth-service] User session validated successfully. uid=usr_000130 ip=192.168.1.11
+2026-07-23T10:00:11.407Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:00:12.444Z [INFO]   [ingress-gw] GET /api/v2/resource/1012 status=200 duration=24ms
+2026-07-23T10:00:13.481Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:00:14.518Z [INFO]   [worker-proc] Job #80014 processed successfully in queue 'default'
+2026-07-23T10:00:15.555Z [INFO]   [auth-service] User session validated successfully. uid=usr_000195 ip=192.168.1.16
+2026-07-23T10:00:16.592Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:00:17.629Z [INFO]   [ingress-gw] GET /api/v2/resource/1017 status=200 duration=29ms
+2026-07-23T10:00:18.666Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:00:19.703Z [INFO]   [worker-proc] Job #80019 processed successfully in queue 'default'
+2026-07-23T10:00:20.740Z [INFO]   [auth-service] User session validated successfully. uid=usr_000260 ip=192.168.1.21
+2026-07-23T10:00:21.777Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:00:22.814Z [INFO]   [ingress-gw] GET /api/v2/resource/1022 status=200 duration=34ms
+2026-07-23T10:00:23.851Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:00:24.888Z [INFO]   [worker-proc] Job #80024 processed successfully in queue 'default'
+2026-07-23T10:00:25.925Z [INFO]   [auth-service] User session validated successfully. uid=usr_000325 ip=192.168.1.26
+2026-07-23T10:00:26.962Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:00:27.999Z [INFO]   [ingress-gw] GET /api/v2/resource/1027 status=200 duration=39ms
+2026-07-23T10:00:28.036Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:00:29.073Z [INFO]   [worker-proc] Job #80029 processed successfully in queue 'default'
+2026-07-23T10:00:30.110Z [INFO]   [auth-service] User session validated successfully. uid=usr_000390 ip=192.168.1.31
+2026-07-23T10:00:31.147Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:00:32.184Z [INFO]   [ingress-gw] GET /api/v2/resource/1032 status=200 duration=44ms
+2026-07-23T10:00:33.221Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:00:34.258Z [INFO]   [worker-proc] Job #80034 processed successfully in queue 'default'
+2026-07-23T10:00:35.295Z [INFO]   [auth-service] User session validated successfully. uid=usr_000455 ip=192.168.1.36
+2026-07-23T10:00:36.332Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:00:37.369Z [INFO]   [ingress-gw] GET /api/v2/resource/1037 status=200 duration=49ms
+2026-07-23T10:00:38.406Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:00:39.443Z [INFO]   [worker-proc] Job #80039 processed successfully in queue 'default'
+2026-07-23T10:00:40.480Z [INFO]   [auth-service] User session validated successfully. uid=usr_000520 ip=192.168.1.41
+2026-07-23T10:00:41.517Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:00:42.554Z [INFO]   [ingress-gw] GET /api/v2/resource/1042 status=200 duration=54ms
+2026-07-23T10:00:43.591Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:00:44.628Z [INFO]   [worker-proc] Job #80044 processed successfully in queue 'default'
+2026-07-23T10:00:45.665Z [INFO]   [auth-service] User session validated successfully. uid=usr_000585 ip=192.168.1.46
+2026-07-23T10:00:46.702Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:00:47.739Z [INFO]   [ingress-gw] GET /api/v2/resource/1047 status=200 duration=59ms
+2026-07-23T10:00:48.776Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:00:49.813Z [INFO]   [worker-proc] Job #80049 processed successfully in queue 'default'
+2026-07-23T10:00:50.850Z [INFO]   [auth-service] User session validated successfully. uid=usr_000650 ip=192.168.1.51
+2026-07-23T10:00:51.887Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:00:52.924Z [INFO]   [ingress-gw] GET /api/v2/resource/1052 status=200 duration=64ms
+2026-07-23T10:00:53.961Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:00:54.998Z [INFO]   [worker-proc] Job #80054 processed successfully in queue 'default'
+2026-07-23T10:00:55.035Z [INFO]   [auth-service] User session validated successfully. uid=usr_000715 ip=192.168.1.56
+2026-07-23T10:00:56.072Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:00:57.109Z [INFO]   [ingress-gw] GET /api/v2/resource/1057 status=200 duration=69ms
+2026-07-23T10:00:58.146Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:00:59.183Z [INFO]   [worker-proc] Job #80059 processed successfully in queue 'default'
+2026-07-23T10:01:00.220Z [INFO]   [auth-service] User session validated successfully. uid=usr_000780 ip=192.168.1.61
+2026-07-23T10:01:01.257Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:01:02.294Z [INFO]   [ingress-gw] GET /api/v2/resource/1062 status=200 duration=74ms
+2026-07-23T10:01:03.331Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:01:04.368Z [INFO]   [worker-proc] Job #80064 processed successfully in queue 'default'
+2026-07-23T10:01:05.405Z [INFO]   [auth-service] User session validated successfully. uid=usr_000845 ip=192.168.1.66
+2026-07-23T10:01:06.442Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:01:07.479Z [INFO]   [ingress-gw] GET /api/v2/resource/1067 status=200 duration=79ms
+2026-07-23T10:01:08.516Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:01:09.553Z [INFO]   [worker-proc] Job #80069 processed successfully in queue 'default'
+2026-07-23T10:01:10.590Z [INFO]   [auth-service] User session validated successfully. uid=usr_000910 ip=192.168.1.71
+2026-07-23T10:01:11.627Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:01:12.664Z [INFO]   [ingress-gw] GET /api/v2/resource/1072 status=200 duration=84ms
+2026-07-23T10:01:13.701Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:01:14.738Z [INFO]   [worker-proc] Job #80074 processed successfully in queue 'default'
+2026-07-23T10:01:15.775Z [INFO]   [auth-service] User session validated successfully. uid=usr_000975 ip=192.168.1.76
+2026-07-23T10:01:16.812Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:01:17.849Z [INFO]   [ingress-gw] GET /api/v2/resource/1077 status=200 duration=89ms
+2026-07-23T10:01:18.886Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:01:19.923Z [INFO]   [worker-proc] Job #80079 processed successfully in queue 'default'
+2026-07-23T10:01:20.960Z [INFO]   [auth-service] User session validated successfully. uid=usr_001040 ip=192.168.1.81
+2026-07-23T10:01:21.997Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:01:22.034Z [INFO]   [ingress-gw] GET /api/v2/resource/1082 status=200 duration=14ms
+2026-07-23T10:01:23.071Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:01:24.108Z [INFO]   [worker-proc] Job #80084 processed successfully in queue 'default'
+2026-07-23T10:01:25.145Z [INFO]   [auth-service] User session validated successfully. uid=usr_001105 ip=192.168.1.86
+2026-07-23T10:01:26.182Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:01:27.219Z [INFO]   [ingress-gw] GET /api/v2/resource/1087 status=200 duration=19ms
+2026-07-23T10:01:28.256Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:01:29.293Z [INFO]   [worker-proc] Job #80089 processed successfully in queue 'default'
+2026-07-23T10:01:30.330Z [INFO]   [auth-service] User session validated successfully. uid=usr_001170 ip=192.168.1.91
+2026-07-23T10:01:31.367Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:01:32.404Z [INFO]   [ingress-gw] GET /api/v2/resource/1092 status=200 duration=24ms
+2026-07-23T10:01:33.441Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:01:34.478Z [INFO]   [worker-proc] Job #80094 processed successfully in queue 'default'
+2026-07-23T10:01:35.515Z [INFO]   [auth-service] User session validated successfully. uid=usr_001235 ip=192.168.1.96
+2026-07-23T10:01:36.552Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:01:37.589Z [INFO]   [ingress-gw] GET /api/v2/resource/1097 status=200 duration=29ms
+2026-07-23T10:01:38.626Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:01:39.663Z [INFO]   [worker-proc] Job #80099 processed successfully in queue 'default'
+2026-07-23T10:01:40.700Z [INFO]   [auth-service] User session validated successfully. uid=usr_001300 ip=192.168.1.101
+2026-07-23T10:01:41.737Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:01:42.774Z [INFO]   [ingress-gw] GET /api/v2/resource/1102 status=200 duration=34ms
+2026-07-23T10:01:43.811Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:01:44.848Z [INFO]   [worker-proc] Job #80104 processed successfully in queue 'default'
+2026-07-23T10:01:45.885Z [INFO]   [auth-service] User session validated successfully. uid=usr_001365 ip=192.168.1.106
+2026-07-23T10:01:46.922Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:01:47.959Z [INFO]   [ingress-gw] GET /api/v2/resource/1107 status=200 duration=39ms
+2026-07-23T10:01:48.996Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:01:49.033Z [INFO]   [worker-proc] Job #80109 processed successfully in queue 'default'
+2026-07-23T10:01:50.070Z [INFO]   [auth-service] User session validated successfully. uid=usr_001430 ip=192.168.1.111
+2026-07-23T10:01:51.107Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:01:52.144Z [INFO]   [ingress-gw] GET /api/v2/resource/1112 status=200 duration=44ms
+2026-07-23T10:01:53.181Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:01:54.218Z [INFO]   [worker-proc] Job #80114 processed successfully in queue 'default'
+2026-07-23T10:01:55.255Z [INFO]   [auth-service] User session validated successfully. uid=usr_001495 ip=192.168.1.116
+2026-07-23T10:01:56.292Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:01:57.329Z [INFO]   [ingress-gw] GET /api/v2/resource/1117 status=200 duration=49ms
+2026-07-23T10:01:58.366Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:01:59.403Z [INFO]   [worker-proc] Job #80119 processed successfully in queue 'default'
+2026-07-23T10:02:00.440Z [INFO]   [auth-service] User session validated successfully. uid=usr_001560 ip=192.168.1.121
+2026-07-23T10:02:01.477Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:02:02.514Z [INFO]   [ingress-gw] GET /api/v2/resource/1122 status=200 duration=54ms
+2026-07-23T10:02:03.551Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:02:04.588Z [INFO]   [worker-proc] Job #80124 processed successfully in queue 'default'
+2026-07-23T10:02:05.625Z [INFO]   [auth-service] User session validated successfully. uid=usr_001625 ip=192.168.1.126
+2026-07-23T10:02:06.662Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:02:07.699Z [INFO]   [ingress-gw] GET /api/v2/resource/1127 status=200 duration=59ms
+2026-07-23T10:02:08.736Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:02:09.773Z [INFO]   [worker-proc] Job #80129 processed successfully in queue 'default'
+2026-07-23T10:02:10.810Z [INFO]   [auth-service] User session validated successfully. uid=usr_001690 ip=192.168.1.131
+2026-07-23T10:02:11.847Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:02:12.884Z [INFO]   [ingress-gw] GET /api/v2/resource/1132 status=200 duration=64ms
+2026-07-23T10:02:13.921Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:02:14.958Z [INFO]   [worker-proc] Job #80134 processed successfully in queue 'default'
+2026-07-23T10:02:15.995Z [INFO]   [auth-service] User session validated successfully. uid=usr_001755 ip=192.168.1.136
+2026-07-23T10:02:16.032Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:02:17.069Z [INFO]   [ingress-gw] GET /api/v2/resource/1137 status=200 duration=69ms
+2026-07-23T10:02:18.106Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:02:19.143Z [INFO]   [worker-proc] Job #80139 processed successfully in queue 'default'
+2026-07-23T10:02:20.180Z [INFO]   [auth-service] User session validated successfully. uid=usr_001820 ip=192.168.1.141
+2026-07-23T10:02:21.217Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:02:22.254Z [INFO]   [ingress-gw] GET /api/v2/resource/1142 status=200 duration=74ms
+2026-07-23T10:02:23.291Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:02:24.328Z [INFO]   [worker-proc] Job #80144 processed successfully in queue 'default'
+2026-07-23T10:02:25.365Z [INFO]   [auth-service] User session validated successfully. uid=usr_001885 ip=192.168.1.146
+2026-07-23T10:02:26.402Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:02:27.439Z [INFO]   [ingress-gw] GET /api/v2/resource/1147 status=200 duration=79ms
+2026-07-23T10:02:28.476Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:02:29.513Z [INFO]   [worker-proc] Job #80149 processed successfully in queue 'default'
+2026-07-23T10:02:30.550Z [INFO]   [auth-service] User session validated successfully. uid=usr_001950 ip=192.168.1.151
+2026-07-23T10:02:31.587Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:02:32.624Z [INFO]   [ingress-gw] GET /api/v2/resource/1152 status=200 duration=84ms
+2026-07-23T10:02:33.661Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:02:34.698Z [INFO]   [worker-proc] Job #80154 processed successfully in queue 'default'
+2026-07-23T10:02:35.735Z [INFO]   [auth-service] User session validated successfully. uid=usr_002015 ip=192.168.1.156
+2026-07-23T10:02:36.772Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:02:37.809Z [INFO]   [ingress-gw] GET /api/v2/resource/1157 status=200 duration=89ms
+2026-07-23T10:02:38.846Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:02:39.883Z [INFO]   [worker-proc] Job #80159 processed successfully in queue 'default'
+2026-07-23T10:02:40.920Z [INFO]   [auth-service] User session validated successfully. uid=usr_002080 ip=192.168.1.161
+2026-07-23T10:02:41.957Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:02:42.994Z [INFO]   [ingress-gw] GET /api/v2/resource/1162 status=200 duration=14ms
+2026-07-23T10:02:43.031Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:02:44.068Z [INFO]   [worker-proc] Job #80164 processed successfully in queue 'default'
+2026-07-23T10:02:45.105Z [INFO]   [auth-service] User session validated successfully. uid=usr_002145 ip=192.168.1.166
+2026-07-23T10:02:46.142Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:02:47.179Z [INFO]   [ingress-gw] GET /api/v2/resource/1167 status=200 duration=19ms
+2026-07-23T10:02:48.216Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:02:49.253Z [INFO]   [worker-proc] Job #80169 processed successfully in queue 'default'
+2026-07-23T10:02:50.290Z [INFO]   [auth-service] User session validated successfully. uid=usr_002210 ip=192.168.1.171
+2026-07-23T10:02:51.327Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:02:52.364Z [INFO]   [ingress-gw] GET /api/v2/resource/1172 status=200 duration=24ms
+2026-07-23T10:02:53.401Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:02:54.438Z [INFO]   [worker-proc] Job #80174 processed successfully in queue 'default'
+2026-07-23T10:02:55.475Z [INFO]   [auth-service] User session validated successfully. uid=usr_002275 ip=192.168.1.176
+2026-07-23T10:02:56.512Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:02:57.549Z [INFO]   [ingress-gw] GET /api/v2/resource/1177 status=200 duration=29ms
+2026-07-23T10:02:58.586Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:02:59.623Z [INFO]   [worker-proc] Job #80179 processed successfully in queue 'default'
+2026-07-23T10:03:00.660Z [INFO]   [auth-service] User session validated successfully. uid=usr_002340 ip=192.168.1.181
+2026-07-23T10:03:01.697Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:03:02.734Z [INFO]   [ingress-gw] GET /api/v2/resource/1182 status=200 duration=34ms
+2026-07-23T10:03:03.771Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:03:04.808Z [INFO]   [worker-proc] Job #80184 processed successfully in queue 'default'
+2026-07-23T10:03:05.845Z [INFO]   [auth-service] User session validated successfully. uid=usr_002405 ip=192.168.1.186
+2026-07-23T10:03:06.882Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:03:07.919Z [INFO]   [ingress-gw] GET /api/v2/resource/1187 status=200 duration=39ms
+2026-07-23T10:03:08.956Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:03:09.993Z [INFO]   [worker-proc] Job #80189 processed successfully in queue 'default'
+2026-07-23T10:03:10.030Z [INFO]   [auth-service] User session validated successfully. uid=usr_002470 ip=192.168.1.191
+2026-07-23T10:03:11.067Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:03:12.104Z [INFO]   [ingress-gw] GET /api/v2/resource/1192 status=200 duration=44ms
+2026-07-23T10:03:13.141Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:03:14.178Z [INFO]   [worker-proc] Job #80194 processed successfully in queue 'default'
+2026-07-23T10:03:15.215Z [INFO]   [auth-service] User session validated successfully. uid=usr_002535 ip=192.168.1.196
+2026-07-23T10:03:16.252Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:03:17.289Z [INFO]   [ingress-gw] GET /api/v2/resource/1197 status=200 duration=49ms
+2026-07-23T10:03:18.326Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:03:19.363Z [INFO]   [worker-proc] Job #80199 processed successfully in queue 'default'
+2026-07-23T10:03:20.400Z [INFO]   [auth-service] User session validated successfully. uid=usr_002600 ip=192.168.1.201
+2026-07-23T10:03:21.437Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:03:22.474Z [INFO]   [ingress-gw] GET /api/v2/resource/1202 status=200 duration=54ms
+2026-07-23T10:03:23.511Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:03:24.548Z [INFO]   [worker-proc] Job #80204 processed successfully in queue 'default'
+2026-07-23T10:03:25.585Z [INFO]   [auth-service] User session validated successfully. uid=usr_002665 ip=192.168.1.206
+2026-07-23T10:03:26.622Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:03:27.659Z [INFO]   [ingress-gw] GET /api/v2/resource/1207 status=200 duration=59ms
+2026-07-23T10:03:28.696Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:03:29.733Z [INFO]   [worker-proc] Job #80209 processed successfully in queue 'default'
+2026-07-23T10:03:30.770Z [INFO]   [auth-service] User session validated successfully. uid=usr_002730 ip=192.168.1.211
+2026-07-23T10:03:31.807Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:03:32.844Z [INFO]   [ingress-gw] GET /api/v2/resource/1212 status=200 duration=64ms
+2026-07-23T10:03:33.881Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:03:34.918Z [INFO]   [worker-proc] Job #80214 processed successfully in queue 'default'
+2026-07-23T10:03:35.955Z [INFO]   [auth-service] User session validated successfully. uid=usr_002795 ip=192.168.1.216
+2026-07-23T10:03:36.992Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:03:37.029Z [INFO]   [ingress-gw] GET /api/v2/resource/1217 status=200 duration=69ms
+2026-07-23T10:03:38.066Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:03:39.103Z [INFO]   [worker-proc] Job #80219 processed successfully in queue 'default'
+2026-07-23T10:03:40.140Z [INFO]   [auth-service] User session validated successfully. uid=usr_002860 ip=192.168.1.221
+2026-07-23T10:03:41.177Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:03:42.214Z [INFO]   [ingress-gw] GET /api/v2/resource/1222 status=200 duration=74ms
+2026-07-23T10:03:43.251Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:03:44.288Z [INFO]   [worker-proc] Job #80224 processed successfully in queue 'default'
+2026-07-23T10:03:45.325Z [INFO]   [auth-service] User session validated successfully. uid=usr_002925 ip=192.168.1.226
+2026-07-23T10:03:46.362Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:03:47.399Z [INFO]   [ingress-gw] GET /api/v2/resource/1227 status=200 duration=79ms
+2026-07-23T10:03:48.436Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:03:49.473Z [INFO]   [worker-proc] Job #80229 processed successfully in queue 'default'
+2026-07-23T10:03:50.510Z [INFO]   [auth-service] User session validated successfully. uid=usr_002990 ip=192.168.1.231
+2026-07-23T10:03:51.547Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:03:52.584Z [INFO]   [ingress-gw] GET /api/v2/resource/1232 status=200 duration=84ms
+2026-07-23T10:03:53.621Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:03:54.658Z [INFO]   [worker-proc] Job #80234 processed successfully in queue 'default'
+2026-07-23T10:03:55.695Z [INFO]   [auth-service] User session validated successfully. uid=usr_003055 ip=192.168.1.236
+2026-07-23T10:03:56.732Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:03:57.769Z [INFO]   [ingress-gw] GET /api/v2/resource/1237 status=200 duration=89ms
+2026-07-23T10:03:58.806Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:03:59.843Z [INFO]   [worker-proc] Job #80239 processed successfully in queue 'default'
+2026-07-23T10:04:00.880Z [INFO]   [auth-service] User session validated successfully. uid=usr_003120 ip=192.168.1.241
+2026-07-23T10:04:01.917Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:04:02.954Z [INFO]   [ingress-gw] GET /api/v2/resource/1242 status=200 duration=14ms
+2026-07-23T10:04:03.991Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:04:04.028Z [INFO]   [worker-proc] Job #80244 processed successfully in queue 'default'
+2026-07-23T10:04:05.065Z [INFO]   [auth-service] User session validated successfully. uid=usr_003185 ip=192.168.1.246
+2026-07-23T10:04:06.102Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:04:07.139Z [INFO]   [ingress-gw] GET /api/v2/resource/1247 status=200 duration=19ms
+2026-07-23T10:04:08.176Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:04:09.213Z [INFO]   [worker-proc] Job #80249 processed successfully in queue 'default'
+2026-07-23T10:04:10.250Z [INFO]   [auth-service] User session validated successfully. uid=usr_003250 ip=192.168.1.1
+2026-07-23T10:04:11.287Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:04:12.324Z [INFO]   [ingress-gw] GET /api/v2/resource/1252 status=200 duration=24ms
+2026-07-23T10:04:13.361Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:04:14.398Z [INFO]   [worker-proc] Job #80254 processed successfully in queue 'default'
+2026-07-23T10:04:15.435Z [INFO]   [auth-service] User session validated successfully. uid=usr_003315 ip=192.168.1.6
+2026-07-23T10:04:16.472Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:04:17.509Z [INFO]   [ingress-gw] GET /api/v2/resource/1257 status=200 duration=29ms
+2026-07-23T10:04:18.546Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:04:19.583Z [INFO]   [worker-proc] Job #80259 processed successfully in queue 'default'
+2026-07-23T10:04:20.620Z [INFO]   [auth-service] User session validated successfully. uid=usr_003380 ip=192.168.1.11
+2026-07-23T10:04:21.657Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:04:22.694Z [INFO]   [ingress-gw] GET /api/v2/resource/1262 status=200 duration=34ms
+2026-07-23T10:04:23.731Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:04:24.768Z [INFO]   [worker-proc] Job #80264 processed successfully in queue 'default'
+2026-07-23T10:04:25.805Z [INFO]   [auth-service] User session validated successfully. uid=usr_003445 ip=192.168.1.16
+2026-07-23T10:04:26.842Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:04:27.879Z [INFO]   [ingress-gw] GET /api/v2/resource/1267 status=200 duration=39ms
+2026-07-23T10:04:28.916Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:04:29.953Z [INFO]   [worker-proc] Job #80269 processed successfully in queue 'default'
+2026-07-23T10:04:30.990Z [INFO]   [auth-service] User session validated successfully. uid=usr_003510 ip=192.168.1.21
+2026-07-23T10:04:31.027Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:04:32.064Z [INFO]   [ingress-gw] GET /api/v2/resource/1272 status=200 duration=44ms
+2026-07-23T10:04:33.101Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:04:34.138Z [INFO]   [worker-proc] Job #80274 processed successfully in queue 'default'
+2026-07-23T10:04:35.175Z [INFO]   [auth-service] User session validated successfully. uid=usr_003575 ip=192.168.1.26
+2026-07-23T10:04:36.212Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:04:37.249Z [INFO]   [ingress-gw] GET /api/v2/resource/1277 status=200 duration=49ms
+2026-07-23T10:04:38.286Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:04:39.323Z [INFO]   [worker-proc] Job #80279 processed successfully in queue 'default'
+2026-07-23T10:04:40.360Z [INFO]   [auth-service] User session validated successfully. uid=usr_003640 ip=192.168.1.31
+2026-07-23T10:04:41.397Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:04:42.434Z [INFO]   [ingress-gw] GET /api/v2/resource/1282 status=200 duration=54ms
+2026-07-23T10:04:43.471Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:04:44.508Z [INFO]   [worker-proc] Job #80284 processed successfully in queue 'default'
+2026-07-23T10:04:45.545Z [INFO]   [auth-service] User session validated successfully. uid=usr_003705 ip=192.168.1.36
+2026-07-23T10:04:46.582Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:04:47.619Z [INFO]   [ingress-gw] GET /api/v2/resource/1287 status=200 duration=59ms
+2026-07-23T10:04:48.656Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:04:49.693Z [INFO]   [worker-proc] Job #80289 processed successfully in queue 'default'
+2026-07-23T10:04:50.730Z [INFO]   [auth-service] User session validated successfully. uid=usr_003770 ip=192.168.1.41
+2026-07-23T10:04:51.767Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:04:52.804Z [INFO]   [ingress-gw] GET /api/v2/resource/1292 status=200 duration=64ms
+2026-07-23T10:04:53.841Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:04:54.878Z [INFO]   [worker-proc] Job #80294 processed successfully in queue 'default'
+2026-07-23T10:04:55.915Z [INFO]   [auth-service] User session validated successfully. uid=usr_003835 ip=192.168.1.46
+2026-07-23T10:04:56.952Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:04:57.989Z [INFO]   [ingress-gw] GET /api/v2/resource/1297 status=200 duration=69ms
+2026-07-23T10:04:58.026Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:04:59.063Z [INFO]   [worker-proc] Job #80299 processed successfully in queue 'default'
+2026-07-23T10:05:00.100Z [INFO]   [auth-service] User session validated successfully. uid=usr_003900 ip=192.168.1.51
+2026-07-23T10:05:01.137Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:05:02.174Z [INFO]   [ingress-gw] GET /api/v2/resource/1302 status=200 duration=74ms
+2026-07-23T10:05:03.211Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:05:04.248Z [INFO]   [worker-proc] Job #80304 processed successfully in queue 'default'
+2026-07-23T10:05:05.285Z [INFO]   [auth-service] User session validated successfully. uid=usr_003965 ip=192.168.1.56
+2026-07-23T10:05:06.322Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:05:07.359Z [INFO]   [ingress-gw] GET /api/v2/resource/1307 status=200 duration=79ms
+2026-07-23T10:05:08.396Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:05:09.433Z [INFO]   [worker-proc] Job #80309 processed successfully in queue 'default'
+2026-07-23T10:05:10.470Z [INFO]   [auth-service] User session validated successfully. uid=usr_004030 ip=192.168.1.61
+2026-07-23T10:05:11.507Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:05:12.544Z [INFO]   [ingress-gw] GET /api/v2/resource/1312 status=200 duration=84ms
+2026-07-23T10:05:13.581Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:05:14.618Z [INFO]   [worker-proc] Job #80314 processed successfully in queue 'default'
+2026-07-23T10:05:15.655Z [INFO]   [auth-service] User session validated successfully. uid=usr_004095 ip=192.168.1.66
+2026-07-23T10:05:16.692Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:05:17.729Z [INFO]   [ingress-gw] GET /api/v2/resource/1317 status=200 duration=89ms
+2026-07-23T10:05:18.766Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:05:19.803Z [INFO]   [worker-proc] Job #80319 processed successfully in queue 'default'
+2026-07-23T10:05:20.840Z [INFO]   [auth-service] User session validated successfully. uid=usr_004160 ip=192.168.1.71
+2026-07-23T10:05:21.877Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:05:22.914Z [INFO]   [ingress-gw] GET /api/v2/resource/1322 status=200 duration=14ms
+2026-07-23T10:05:23.951Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:05:24.988Z [INFO]   [worker-proc] Job #80324 processed successfully in queue 'default'
+2026-07-23T10:05:25.025Z [INFO]   [auth-service] User session validated successfully. uid=usr_004225 ip=192.168.1.76
+2026-07-23T10:05:26.062Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:05:27.099Z [INFO]   [ingress-gw] GET /api/v2/resource/1327 status=200 duration=19ms
+2026-07-23T10:05:28.136Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:05:29.173Z [INFO]   [worker-proc] Job #80329 processed successfully in queue 'default'
+2026-07-23T10:05:30.210Z [INFO]   [auth-service] User session validated successfully. uid=usr_004290 ip=192.168.1.81
+2026-07-23T10:05:31.247Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:05:32.284Z [INFO]   [ingress-gw] GET /api/v2/resource/1332 status=200 duration=24ms
+2026-07-23T10:05:33.321Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:05:34.358Z [INFO]   [worker-proc] Job #80334 processed successfully in queue 'default'
+2026-07-23T10:05:35.395Z [INFO]   [auth-service] User session validated successfully. uid=usr_004355 ip=192.168.1.86
+2026-07-23T10:05:36.432Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:05:37.469Z [INFO]   [ingress-gw] GET /api/v2/resource/1337 status=200 duration=29ms
+2026-07-23T10:05:38.506Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:05:39.543Z [INFO]   [worker-proc] Job #80339 processed successfully in queue 'default'
+2026-07-23T10:05:40.580Z [INFO]   [auth-service] User session validated successfully. uid=usr_004420 ip=192.168.1.91
+2026-07-23T10:05:41.617Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:05:42.654Z [INFO]   [ingress-gw] GET /api/v2/resource/1342 status=200 duration=34ms
+2026-07-23T10:05:43.691Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:05:44.728Z [INFO]   [worker-proc] Job #80344 processed successfully in queue 'default'
+2026-07-23T10:05:45.765Z [INFO]   [auth-service] User session validated successfully. uid=usr_004485 ip=192.168.1.96
+2026-07-23T10:05:46.802Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:05:47.839Z [INFO]   [ingress-gw] GET /api/v2/resource/1347 status=200 duration=39ms
+2026-07-23T10:05:48.876Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:05:49.913Z [INFO]   [worker-proc] Job #80349 processed successfully in queue 'default'
+2026-07-23T10:05:50.950Z [INFO]   [auth-service] User session validated successfully. uid=usr_004550 ip=192.168.1.101
+2026-07-23T10:05:51.987Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:05:52.024Z [INFO]   [ingress-gw] GET /api/v2/resource/1352 status=200 duration=44ms
+2026-07-23T10:05:53.061Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:05:54.098Z [INFO]   [worker-proc] Job #80354 processed successfully in queue 'default'
+2026-07-23T10:05:55.135Z [INFO]   [auth-service] User session validated successfully. uid=usr_004615 ip=192.168.1.106
+2026-07-23T10:05:56.172Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:05:57.209Z [INFO]   [ingress-gw] GET /api/v2/resource/1357 status=200 duration=49ms
+2026-07-23T10:05:58.246Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:05:59.283Z [INFO]   [worker-proc] Job #80359 processed successfully in queue 'default'
+2026-07-23T10:06:00.320Z [INFO]   [auth-service] User session validated successfully. uid=usr_004680 ip=192.168.1.111
+2026-07-23T10:06:01.357Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:06:02.394Z [INFO]   [ingress-gw] GET /api/v2/resource/1362 status=200 duration=54ms
+2026-07-23T10:06:03.431Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:06:04.468Z [INFO]   [worker-proc] Job #80364 processed successfully in queue 'default'
+2026-07-23T10:06:05.505Z [INFO]   [auth-service] User session validated successfully. uid=usr_004745 ip=192.168.1.116
+2026-07-23T10:06:06.542Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:06:07.579Z [INFO]   [ingress-gw] GET /api/v2/resource/1367 status=200 duration=59ms
+2026-07-23T10:06:08.616Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:06:09.653Z [INFO]   [worker-proc] Job #80369 processed successfully in queue 'default'
+2026-07-23T10:06:10.690Z [INFO]   [auth-service] User session validated successfully. uid=usr_004810 ip=192.168.1.121
+2026-07-23T10:06:11.727Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:06:12.764Z [INFO]   [ingress-gw] GET /api/v2/resource/1372 status=200 duration=64ms
+2026-07-23T10:06:13.801Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:06:14.838Z [INFO]   [worker-proc] Job #80374 processed successfully in queue 'default'
+2026-07-23T10:06:15.875Z [INFO]   [auth-service] User session validated successfully. uid=usr_004875 ip=192.168.1.126
+2026-07-23T10:06:16.912Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:06:17.949Z [INFO]   [ingress-gw] GET /api/v2/resource/1377 status=200 duration=69ms
+2026-07-23T10:06:18.986Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:06:19.023Z [INFO]   [worker-proc] Job #80379 processed successfully in queue 'default'
+2026-07-23T10:06:20.060Z [INFO]   [auth-service] User session validated successfully. uid=usr_004940 ip=192.168.1.131
+2026-07-23T10:06:21.097Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:06:22.134Z [INFO]   [ingress-gw] GET /api/v2/resource/1382 status=200 duration=74ms
+2026-07-23T10:06:23.171Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:06:24.208Z [INFO]   [worker-proc] Job #80384 processed successfully in queue 'default'
+2026-07-23T10:06:25.245Z [INFO]   [auth-service] User session validated successfully. uid=usr_005005 ip=192.168.1.136
+2026-07-23T10:06:26.282Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:06:27.319Z [INFO]   [ingress-gw] GET /api/v2/resource/1387 status=200 duration=79ms
+2026-07-23T10:06:28.356Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:06:29.393Z [INFO]   [worker-proc] Job #80389 processed successfully in queue 'default'
+2026-07-23T10:06:30.430Z [INFO]   [auth-service] User session validated successfully. uid=usr_005070 ip=192.168.1.141
+2026-07-23T10:06:31.467Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:06:32.504Z [INFO]   [ingress-gw] GET /api/v2/resource/1392 status=200 duration=84ms
+2026-07-23T10:06:33.541Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:06:34.578Z [INFO]   [worker-proc] Job #80394 processed successfully in queue 'default'
+2026-07-23T10:06:35.615Z [INFO]   [auth-service] User session validated successfully. uid=usr_005135 ip=192.168.1.146
+2026-07-23T10:06:36.652Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:06:37.689Z [INFO]   [ingress-gw] GET /api/v2/resource/1397 status=200 duration=89ms
+2026-07-23T10:06:38.726Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:06:39.763Z [INFO]   [worker-proc] Job #80399 processed successfully in queue 'default'
+2026-07-23T10:06:40.800Z [INFO]   [auth-service] User session validated successfully. uid=usr_005200 ip=192.168.1.151
+2026-07-23T10:06:41.837Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:06:42.874Z [INFO]   [ingress-gw] GET /api/v2/resource/1402 status=200 duration=14ms
+2026-07-23T10:06:43.911Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:06:44.948Z [INFO]   [worker-proc] Job #80404 processed successfully in queue 'default'
+2026-07-23T10:06:45.985Z [INFO]   [auth-service] User session validated successfully. uid=usr_005265 ip=192.168.1.156
+2026-07-23T10:06:46.022Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:06:47.059Z [INFO]   [ingress-gw] GET /api/v2/resource/1407 status=200 duration=19ms
+2026-07-23T10:06:48.096Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:06:49.133Z [INFO]   [worker-proc] Job #80409 processed successfully in queue 'default'
+2026-07-23T10:06:50.170Z [INFO]   [auth-service] User session validated successfully. uid=usr_005330 ip=192.168.1.161
+2026-07-23T10:06:51.207Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:06:52.244Z [INFO]   [ingress-gw] GET /api/v2/resource/1412 status=200 duration=24ms
+2026-07-23T10:06:53.281Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:06:54.318Z [INFO]   [worker-proc] Job #80414 processed successfully in queue 'default'
+2026-07-23T10:06:55.355Z [INFO]   [auth-service] User session validated successfully. uid=usr_005395 ip=192.168.1.166
+2026-07-23T10:06:56.392Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:06:57.429Z [INFO]   [ingress-gw] GET /api/v2/resource/1417 status=200 duration=29ms
+2026-07-23T10:06:58.466Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:06:59.503Z [INFO]   [worker-proc] Job #80419 processed successfully in queue 'default'
+2026-07-23T10:07:00.540Z [INFO]   [auth-service] User session validated successfully. uid=usr_005460 ip=192.168.1.171
+2026-07-23T10:07:01.577Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:07:02.614Z [INFO]   [ingress-gw] GET /api/v2/resource/1422 status=200 duration=34ms
+2026-07-23T10:07:03.651Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:07:04.688Z [INFO]   [worker-proc] Job #80424 processed successfully in queue 'default'
+2026-07-23T10:07:05.725Z [INFO]   [auth-service] User session validated successfully. uid=usr_005525 ip=192.168.1.176
+2026-07-23T10:07:06.762Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:07:07.799Z [INFO]   [ingress-gw] GET /api/v2/resource/1427 status=200 duration=39ms
+2026-07-23T10:07:08.836Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:07:09.873Z [INFO]   [worker-proc] Job #80429 processed successfully in queue 'default'
+2026-07-23T10:07:10.910Z [INFO]   [auth-service] User session validated successfully. uid=usr_005590 ip=192.168.1.181
+2026-07-23T10:07:11.947Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:07:12.984Z [INFO]   [ingress-gw] GET /api/v2/resource/1432 status=200 duration=44ms
+2026-07-23T10:07:13.021Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:07:14.058Z [INFO]   [worker-proc] Job #80434 processed successfully in queue 'default'
+2026-07-23T10:07:15.095Z [INFO]   [auth-service] User session validated successfully. uid=usr_005655 ip=192.168.1.186
+2026-07-23T10:07:16.132Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:07:17.169Z [INFO]   [ingress-gw] GET /api/v2/resource/1437 status=200 duration=49ms
+2026-07-23T10:07:18.206Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:07:19.243Z [INFO]   [worker-proc] Job #80439 processed successfully in queue 'default'
+2026-07-23T10:07:20.280Z [INFO]   [auth-service] User session validated successfully. uid=usr_005720 ip=192.168.1.191
+2026-07-23T10:07:21.317Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:07:22.354Z [INFO]   [ingress-gw] GET /api/v2/resource/1442 status=200 duration=54ms
+2026-07-23T10:07:23.391Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:07:24.428Z [INFO]   [worker-proc] Job #80444 processed successfully in queue 'default'
+2026-07-23T10:07:25.465Z [INFO]   [auth-service] User session validated successfully. uid=usr_005785 ip=192.168.1.196
+2026-07-23T10:07:26.502Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:07:27.539Z [INFO]   [ingress-gw] GET /api/v2/resource/1447 status=200 duration=59ms
+2026-07-23T10:07:28.576Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:07:29.613Z [INFO]   [worker-proc] Job #80449 processed successfully in queue 'default'
+2026-07-23T10:07:30.650Z [INFO]   [auth-service] User session validated successfully. uid=usr_005850 ip=192.168.1.201
+2026-07-23T10:07:31.687Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:07:32.724Z [INFO]   [ingress-gw] GET /api/v2/resource/1452 status=200 duration=64ms
+2026-07-23T10:07:33.761Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:07:34.798Z [INFO]   [worker-proc] Job #80454 processed successfully in queue 'default'
+2026-07-23T10:07:35.835Z [INFO]   [auth-service] User session validated successfully. uid=usr_005915 ip=192.168.1.206
+2026-07-23T10:07:36.872Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:07:37.909Z [INFO]   [ingress-gw] GET /api/v2/resource/1457 status=200 duration=69ms
+2026-07-23T10:07:38.946Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:07:39.983Z [INFO]   [worker-proc] Job #80459 processed successfully in queue 'default'
+2026-07-23T10:07:40.020Z [INFO]   [auth-service] User session validated successfully. uid=usr_005980 ip=192.168.1.211
+2026-07-23T10:07:41.057Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:07:42.094Z [INFO]   [ingress-gw] GET /api/v2/resource/1462 status=200 duration=74ms
+2026-07-23T10:07:43.131Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:07:44.168Z [INFO]   [worker-proc] Job #80464 processed successfully in queue 'default'
+2026-07-23T10:07:45.205Z [INFO]   [auth-service] User session validated successfully. uid=usr_006045 ip=192.168.1.216
+2026-07-23T10:07:46.242Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:07:47.279Z [INFO]   [ingress-gw] GET /api/v2/resource/1467 status=200 duration=79ms
+2026-07-23T10:07:48.316Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:07:49.353Z [INFO]   [worker-proc] Job #80469 processed successfully in queue 'default'
+2026-07-23T10:07:50.390Z [INFO]   [auth-service] User session validated successfully. uid=usr_006110 ip=192.168.1.221
+2026-07-23T10:07:51.427Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:07:52.464Z [INFO]   [ingress-gw] GET /api/v2/resource/1472 status=200 duration=84ms
+2026-07-23T10:07:53.501Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:07:54.538Z [INFO]   [worker-proc] Job #80474 processed successfully in queue 'default'
+2026-07-23T10:07:55.575Z [INFO]   [auth-service] User session validated successfully. uid=usr_006175 ip=192.168.1.226
+2026-07-23T10:07:56.612Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:07:57.649Z [INFO]   [ingress-gw] GET /api/v2/resource/1477 status=200 duration=89ms
+2026-07-23T10:07:58.686Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:07:59.723Z [INFO]   [worker-proc] Job #80479 processed successfully in queue 'default'
+2026-07-23T10:08:00.760Z [INFO]   [auth-service] User session validated successfully. uid=usr_006240 ip=192.168.1.231
+2026-07-23T10:08:01.797Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:08:02.834Z [INFO]   [ingress-gw] GET /api/v2/resource/1482 status=200 duration=14ms
+2026-07-23T10:08:03.871Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:08:04.908Z [INFO]   [worker-proc] Job #80484 processed successfully in queue 'default'
+2026-07-23T10:08:05.945Z [INFO]   [auth-service] User session validated successfully. uid=usr_006305 ip=192.168.1.236
+2026-07-23T10:08:06.982Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:08:07.019Z [INFO]   [ingress-gw] GET /api/v2/resource/1487 status=200 duration=19ms
+2026-07-23T10:08:08.056Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:08:09.093Z [INFO]   [worker-proc] Job #80489 processed successfully in queue 'default'
+2026-07-23T10:08:10.130Z [INFO]   [auth-service] User session validated successfully. uid=usr_006370 ip=192.168.1.241
+2026-07-23T10:08:11.167Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:08:12.204Z [INFO]   [ingress-gw] GET /api/v2/resource/1492 status=200 duration=24ms
+2026-07-23T10:08:13.241Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:08:14.278Z [INFO]   [worker-proc] Job #80494 processed successfully in queue 'default'
+2026-07-23T10:08:15.315Z [INFO]   [auth-service] User session validated successfully. uid=usr_006435 ip=192.168.1.246
+2026-07-23T10:08:16.352Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:08:17.389Z [INFO]   [ingress-gw] GET /api/v2/resource/1497 status=200 duration=29ms
+2026-07-23T10:08:18.426Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:08:19.463Z [INFO]   [worker-proc] Job #80499 processed successfully in queue 'default'
+2026-07-23T10:08:20.500Z [INFO]   [auth-service] User session validated successfully. uid=usr_006500 ip=192.168.1.1
+2026-07-23T10:08:21.537Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:08:22.574Z [INFO]   [ingress-gw] GET /api/v2/resource/1502 status=200 duration=34ms
+2026-07-23T10:08:23.611Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:08:24.648Z [INFO]   [worker-proc] Job #80504 processed successfully in queue 'default'
+2026-07-23T10:08:25.685Z [INFO]   [auth-service] User session validated successfully. uid=usr_006565 ip=192.168.1.6
+2026-07-23T10:08:26.722Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:08:27.759Z [INFO]   [ingress-gw] GET /api/v2/resource/1507 status=200 duration=39ms
+2026-07-23T10:08:28.796Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:08:29.833Z [INFO]   [worker-proc] Job #80509 processed successfully in queue 'default'
+2026-07-23T10:08:30.870Z [INFO]   [auth-service] User session validated successfully. uid=usr_006630 ip=192.168.1.11
+2026-07-23T10:08:31.907Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:08:32.944Z [INFO]   [ingress-gw] GET /api/v2/resource/1512 status=200 duration=44ms
+2026-07-23T10:08:33.981Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:08:34.018Z [INFO]   [worker-proc] Job #80514 processed successfully in queue 'default'
+2026-07-23T10:08:35.055Z [INFO]   [auth-service] User session validated successfully. uid=usr_006695 ip=192.168.1.16
+2026-07-23T10:08:36.092Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:08:37.129Z [INFO]   [ingress-gw] GET /api/v2/resource/1517 status=200 duration=49ms
+2026-07-23T10:08:38.166Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:08:39.203Z [INFO]   [worker-proc] Job #80519 processed successfully in queue 'default'
+2026-07-23T10:08:40.240Z [INFO]   [auth-service] User session validated successfully. uid=usr_006760 ip=192.168.1.21
+2026-07-23T10:08:41.277Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:08:42.314Z [INFO]   [ingress-gw] GET /api/v2/resource/1522 status=200 duration=54ms
+2026-07-23T10:08:43.351Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:08:44.388Z [INFO]   [worker-proc] Job #80524 processed successfully in queue 'default'
+2026-07-23T10:08:45.425Z [INFO]   [auth-service] User session validated successfully. uid=usr_006825 ip=192.168.1.26
+2026-07-23T10:08:46.462Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:08:47.499Z [INFO]   [ingress-gw] GET /api/v2/resource/1527 status=200 duration=59ms
+2026-07-23T10:08:48.536Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:08:49.573Z [INFO]   [worker-proc] Job #80529 processed successfully in queue 'default'
+2026-07-23T10:08:50.610Z [INFO]   [auth-service] User session validated successfully. uid=usr_006890 ip=192.168.1.31
+2026-07-23T10:08:51.647Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:08:52.684Z [INFO]   [ingress-gw] GET /api/v2/resource/1532 status=200 duration=64ms
+2026-07-23T10:08:53.721Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:08:54.758Z [INFO]   [worker-proc] Job #80534 processed successfully in queue 'default'
+2026-07-23T10:08:55.795Z [INFO]   [auth-service] User session validated successfully. uid=usr_006955 ip=192.168.1.36
+2026-07-23T10:08:56.832Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:08:57.869Z [INFO]   [ingress-gw] GET /api/v2/resource/1537 status=200 duration=69ms
+2026-07-23T10:08:58.906Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:08:59.943Z [INFO]   [worker-proc] Job #80539 processed successfully in queue 'default'
+2026-07-23T10:09:00.980Z [INFO]   [auth-service] User session validated successfully. uid=usr_007020 ip=192.168.1.41
+2026-07-23T10:09:01.017Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:09:02.054Z [INFO]   [ingress-gw] GET /api/v2/resource/1542 status=200 duration=74ms
+2026-07-23T10:09:03.091Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:09:04.128Z [INFO]   [worker-proc] Job #80544 processed successfully in queue 'default'
+2026-07-23T10:09:05.165Z [INFO]   [auth-service] User session validated successfully. uid=usr_007085 ip=192.168.1.46
+2026-07-23T10:09:06.202Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:09:07.239Z [INFO]   [ingress-gw] GET /api/v2/resource/1547 status=200 duration=79ms
+2026-07-23T10:09:08.276Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:09:09.313Z [INFO]   [worker-proc] Job #80549 processed successfully in queue 'default'
+2026-07-23T10:09:10.350Z [INFO]   [auth-service] User session validated successfully. uid=usr_007150 ip=192.168.1.51
+2026-07-23T10:09:11.387Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:09:12.424Z [INFO]   [ingress-gw] GET /api/v2/resource/1552 status=200 duration=84ms
+2026-07-23T10:09:13.461Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:09:14.498Z [INFO]   [worker-proc] Job #80554 processed successfully in queue 'default'
+2026-07-23T10:09:15.535Z [INFO]   [auth-service] User session validated successfully. uid=usr_007215 ip=192.168.1.56
+2026-07-23T10:09:16.572Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:09:17.609Z [INFO]   [ingress-gw] GET /api/v2/resource/1557 status=200 duration=89ms
+2026-07-23T10:09:18.646Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:09:19.683Z [INFO]   [worker-proc] Job #80559 processed successfully in queue 'default'
+2026-07-23T10:09:20.720Z [INFO]   [auth-service] User session validated successfully. uid=usr_007280 ip=192.168.1.61
+2026-07-23T10:09:21.757Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:09:22.794Z [INFO]   [ingress-gw] GET /api/v2/resource/1562 status=200 duration=14ms
+2026-07-23T10:09:23.831Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:09:24.868Z [INFO]   [worker-proc] Job #80564 processed successfully in queue 'default'
+2026-07-23T10:09:25.905Z [INFO]   [auth-service] User session validated successfully. uid=usr_007345 ip=192.168.1.66
+2026-07-23T10:09:26.942Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:09:27.979Z [INFO]   [ingress-gw] GET /api/v2/resource/1567 status=200 duration=19ms
+2026-07-23T10:09:28.016Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:09:29.053Z [INFO]   [worker-proc] Job #80569 processed successfully in queue 'default'
+2026-07-23T10:09:30.090Z [INFO]   [auth-service] User session validated successfully. uid=usr_007410 ip=192.168.1.71
+2026-07-23T10:09:31.127Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:09:32.164Z [INFO]   [ingress-gw] GET /api/v2/resource/1572 status=200 duration=24ms
+2026-07-23T10:09:33.201Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:09:34.238Z [INFO]   [worker-proc] Job #80574 processed successfully in queue 'default'
+2026-07-23T10:09:35.275Z [INFO]   [auth-service] User session validated successfully. uid=usr_007475 ip=192.168.1.76
+2026-07-23T10:09:36.312Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:09:37.349Z [INFO]   [ingress-gw] GET /api/v2/resource/1577 status=200 duration=29ms
+2026-07-23T10:09:38.386Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:09:39.423Z [INFO]   [worker-proc] Job #80579 processed successfully in queue 'default'
+2026-07-23T10:09:40.460Z [INFO]   [auth-service] User session validated successfully. uid=usr_007540 ip=192.168.1.81
+2026-07-23T10:09:41.497Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:09:42.534Z [INFO]   [ingress-gw] GET /api/v2/resource/1582 status=200 duration=34ms
+2026-07-23T10:09:43.571Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:09:44.608Z [INFO]   [worker-proc] Job #80584 processed successfully in queue 'default'
+2026-07-23T10:09:45.645Z [INFO]   [auth-service] User session validated successfully. uid=usr_007605 ip=192.168.1.86
+2026-07-23T10:09:46.682Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:09:47.719Z [INFO]   [ingress-gw] GET /api/v2/resource/1587 status=200 duration=39ms
+2026-07-23T10:09:48.756Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:09:49.793Z [INFO]   [worker-proc] Job #80589 processed successfully in queue 'default'
+2026-07-23T10:09:50.830Z [INFO]   [auth-service] User session validated successfully. uid=usr_007670 ip=192.168.1.91
+2026-07-23T10:09:51.867Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:09:52.904Z [INFO]   [ingress-gw] GET /api/v2/resource/1592 status=200 duration=44ms
+2026-07-23T10:09:53.941Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:09:54.978Z [INFO]   [worker-proc] Job #80594 processed successfully in queue 'default'
+2026-07-23T10:09:55.015Z [INFO]   [auth-service] User session validated successfully. uid=usr_007735 ip=192.168.1.96
+2026-07-23T10:09:56.052Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:09:57.089Z [INFO]   [ingress-gw] GET /api/v2/resource/1597 status=200 duration=49ms
+2026-07-23T10:09:58.126Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:09:59.163Z [INFO]   [worker-proc] Job #80599 processed successfully in queue 'default'
+2026-07-23T10:10:00.200Z [INFO]   [auth-service] User session validated successfully. uid=usr_007800 ip=192.168.1.101
+2026-07-23T10:10:01.237Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:10:02.274Z [INFO]   [ingress-gw] GET /api/v2/resource/1602 status=200 duration=54ms
+2026-07-23T10:10:03.311Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:10:04.348Z [INFO]   [worker-proc] Job #80604 processed successfully in queue 'default'
+2026-07-23T10:10:05.385Z [INFO]   [auth-service] User session validated successfully. uid=usr_007865 ip=192.168.1.106
+2026-07-23T10:10:06.422Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:10:07.459Z [INFO]   [ingress-gw] GET /api/v2/resource/1607 status=200 duration=59ms
+2026-07-23T10:10:08.496Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:10:09.533Z [INFO]   [worker-proc] Job #80609 processed successfully in queue 'default'
+2026-07-23T10:10:10.570Z [INFO]   [auth-service] User session validated successfully. uid=usr_007930 ip=192.168.1.111
+2026-07-23T10:10:11.607Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:10:12.644Z [INFO]   [ingress-gw] GET /api/v2/resource/1612 status=200 duration=64ms
+2026-07-23T10:10:13.681Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:10:14.718Z [INFO]   [worker-proc] Job #80614 processed successfully in queue 'default'
+2026-07-23T10:10:15.755Z [INFO]   [auth-service] User session validated successfully. uid=usr_007995 ip=192.168.1.116
+2026-07-23T10:10:16.792Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:10:17.829Z [INFO]   [ingress-gw] GET /api/v2/resource/1617 status=200 duration=69ms
+2026-07-23T10:10:18.866Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:10:19.903Z [INFO]   [worker-proc] Job #80619 processed successfully in queue 'default'
+2026-07-23T10:10:20.940Z [INFO]   [auth-service] User session validated successfully. uid=usr_008060 ip=192.168.1.121
+2026-07-23T10:10:21.977Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:10:22.014Z [INFO]   [ingress-gw] GET /api/v2/resource/1622 status=200 duration=74ms
+2026-07-23T10:10:23.051Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:10:24.088Z [INFO]   [worker-proc] Job #80624 processed successfully in queue 'default'
+2026-07-23T10:10:25.125Z [INFO]   [auth-service] User session validated successfully. uid=usr_008125 ip=192.168.1.126
+2026-07-23T10:10:26.162Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:10:27.199Z [INFO]   [ingress-gw] GET /api/v2/resource/1627 status=200 duration=79ms
+2026-07-23T10:10:28.236Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:10:29.273Z [INFO]   [worker-proc] Job #80629 processed successfully in queue 'default'
+2026-07-23T10:10:30.310Z [INFO]   [auth-service] User session validated successfully. uid=usr_008190 ip=192.168.1.131
+2026-07-23T10:10:31.347Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:10:32.384Z [INFO]   [ingress-gw] GET /api/v2/resource/1632 status=200 duration=84ms
+2026-07-23T10:10:33.421Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:10:34.458Z [INFO]   [worker-proc] Job #80634 processed successfully in queue 'default'
+2026-07-23T10:10:35.495Z [INFO]   [auth-service] User session validated successfully. uid=usr_008255 ip=192.168.1.136
+2026-07-23T10:10:36.532Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:10:37.569Z [INFO]   [ingress-gw] GET /api/v2/resource/1637 status=200 duration=89ms
+2026-07-23T10:10:38.606Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:10:39.643Z [INFO]   [worker-proc] Job #80639 processed successfully in queue 'default'
+2026-07-23T10:10:40.680Z [INFO]   [auth-service] User session validated successfully. uid=usr_008320 ip=192.168.1.141
+2026-07-23T10:10:41.717Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:10:42.754Z [INFO]   [ingress-gw] GET /api/v2/resource/1642 status=200 duration=14ms
+2026-07-23T10:10:43.791Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:10:44.828Z [INFO]   [worker-proc] Job #80644 processed successfully in queue 'default'
+2026-07-23T10:10:45.865Z [INFO]   [auth-service] User session validated successfully. uid=usr_008385 ip=192.168.1.146
+2026-07-23T10:10:46.902Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:10:47.939Z [INFO]   [ingress-gw] GET /api/v2/resource/1647 status=200 duration=19ms
+2026-07-23T10:10:48.976Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:10:49.013Z [INFO]   [worker-proc] Job #80649 processed successfully in queue 'default'
+2026-07-23T10:10:50.050Z [INFO]   [auth-service] User session validated successfully. uid=usr_008450 ip=192.168.1.151
+2026-07-23T10:10:51.087Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:10:52.124Z [INFO]   [ingress-gw] GET /api/v2/resource/1652 status=200 duration=24ms
+2026-07-23T10:10:53.161Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:10:54.198Z [INFO]   [worker-proc] Job #80654 processed successfully in queue 'default'
+2026-07-23T10:10:55.235Z [INFO]   [auth-service] User session validated successfully. uid=usr_008515 ip=192.168.1.156
+2026-07-23T10:10:56.272Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:10:57.309Z [INFO]   [ingress-gw] GET /api/v2/resource/1657 status=200 duration=29ms
+2026-07-23T10:10:58.346Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:10:59.383Z [INFO]   [worker-proc] Job #80659 processed successfully in queue 'default'
+2026-07-23T10:11:00.420Z [INFO]   [auth-service] User session validated successfully. uid=usr_008580 ip=192.168.1.161
+2026-07-23T10:11:01.457Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:11:02.494Z [INFO]   [ingress-gw] GET /api/v2/resource/1662 status=200 duration=34ms
+2026-07-23T10:11:03.531Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:11:04.568Z [INFO]   [worker-proc] Job #80664 processed successfully in queue 'default'
+2026-07-23T10:11:05.605Z [INFO]   [auth-service] User session validated successfully. uid=usr_008645 ip=192.168.1.166
+2026-07-23T10:11:06.642Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:11:07.679Z [INFO]   [ingress-gw] GET /api/v2/resource/1667 status=200 duration=39ms
+2026-07-23T10:11:08.716Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:11:09.753Z [INFO]   [worker-proc] Job #80669 processed successfully in queue 'default'
+2026-07-23T10:11:10.790Z [INFO]   [auth-service] User session validated successfully. uid=usr_008710 ip=192.168.1.171
+2026-07-23T10:11:11.827Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:11:12.864Z [INFO]   [ingress-gw] GET /api/v2/resource/1672 status=200 duration=44ms
+2026-07-23T10:11:13.901Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:11:14.938Z [INFO]   [worker-proc] Job #80674 processed successfully in queue 'default'
+2026-07-23T10:11:15.975Z [INFO]   [auth-service] User session validated successfully. uid=usr_008775 ip=192.168.1.176
+2026-07-23T10:11:16.012Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:11:17.049Z [INFO]   [ingress-gw] GET /api/v2/resource/1677 status=200 duration=49ms
+2026-07-23T10:11:18.086Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:11:19.123Z [INFO]   [worker-proc] Job #80679 processed successfully in queue 'default'
+2026-07-23T10:11:20.160Z [INFO]   [auth-service] User session validated successfully. uid=usr_008840 ip=192.168.1.181
+2026-07-23T10:11:21.197Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:11:22.234Z [INFO]   [ingress-gw] GET /api/v2/resource/1682 status=200 duration=54ms
+2026-07-23T10:11:23.271Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:11:24.308Z [INFO]   [worker-proc] Job #80684 processed successfully in queue 'default'
+2026-07-23T10:11:25.345Z [INFO]   [auth-service] User session validated successfully. uid=usr_008905 ip=192.168.1.186
+2026-07-23T10:11:26.382Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:11:27.419Z [INFO]   [ingress-gw] GET /api/v2/resource/1687 status=200 duration=59ms
+2026-07-23T10:11:28.456Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:11:29.493Z [INFO]   [worker-proc] Job #80689 processed successfully in queue 'default'
+2026-07-23T10:11:30.530Z [INFO]   [auth-service] User session validated successfully. uid=usr_008970 ip=192.168.1.191
+2026-07-23T10:11:31.567Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:11:32.604Z [INFO]   [ingress-gw] GET /api/v2/resource/1692 status=200 duration=64ms
+2026-07-23T10:11:33.641Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:11:34.678Z [INFO]   [worker-proc] Job #80694 processed successfully in queue 'default'
+2026-07-23T10:11:35.715Z [INFO]   [auth-service] User session validated successfully. uid=usr_009035 ip=192.168.1.196
+2026-07-23T10:11:36.752Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:11:37.789Z [INFO]   [ingress-gw] GET /api/v2/resource/1697 status=200 duration=69ms
+2026-07-23T10:11:38.826Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:11:39.863Z [INFO]   [worker-proc] Job #80699 processed successfully in queue 'default'
+2026-07-23T10:11:40.900Z [INFO]   [auth-service] User session validated successfully. uid=usr_009100 ip=192.168.1.201
+2026-07-23T10:11:41.937Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:11:42.974Z [INFO]   [ingress-gw] GET /api/v2/resource/1702 status=200 duration=74ms
+2026-07-23T10:11:43.011Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:11:44.048Z [INFO]   [worker-proc] Job #80704 processed successfully in queue 'default'
+2026-07-23T10:11:45.085Z [INFO]   [auth-service] User session validated successfully. uid=usr_009165 ip=192.168.1.206
+2026-07-23T10:11:46.122Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:11:47.159Z [INFO]   [ingress-gw] GET /api/v2/resource/1707 status=200 duration=79ms
+2026-07-23T10:11:48.196Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:11:49.233Z [INFO]   [worker-proc] Job #80709 processed successfully in queue 'default'
+2026-07-23T10:11:50.270Z [INFO]   [auth-service] User session validated successfully. uid=usr_009230 ip=192.168.1.211
+2026-07-23T10:11:51.307Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:11:52.344Z [INFO]   [ingress-gw] GET /api/v2/resource/1712 status=200 duration=84ms
+2026-07-23T10:11:53.381Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:11:54.418Z [INFO]   [worker-proc] Job #80714 processed successfully in queue 'default'
+2026-07-23T10:11:55.455Z [INFO]   [auth-service] User session validated successfully. uid=usr_009295 ip=192.168.1.216
+2026-07-23T10:11:56.492Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:11:57.529Z [INFO]   [ingress-gw] GET /api/v2/resource/1717 status=200 duration=89ms
+2026-07-23T10:11:58.566Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:11:59.603Z [INFO]   [worker-proc] Job #80719 processed successfully in queue 'default'
+2026-07-23T10:12:00.640Z [INFO]   [auth-service] User session validated successfully. uid=usr_009360 ip=192.168.1.221
+2026-07-23T10:12:01.677Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:12:02.714Z [INFO]   [ingress-gw] GET /api/v2/resource/1722 status=200 duration=14ms
+2026-07-23T10:12:03.751Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:12:04.788Z [INFO]   [worker-proc] Job #80724 processed successfully in queue 'default'
+2026-07-23T10:12:05.825Z [INFO]   [auth-service] User session validated successfully. uid=usr_009425 ip=192.168.1.226
+2026-07-23T10:12:06.862Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:12:07.899Z [INFO]   [ingress-gw] GET /api/v2/resource/1727 status=200 duration=19ms
+2026-07-23T10:12:08.936Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:12:09.973Z [INFO]   [worker-proc] Job #80729 processed successfully in queue 'default'
+2026-07-23T10:12:10.010Z [INFO]   [auth-service] User session validated successfully. uid=usr_009490 ip=192.168.1.231
+2026-07-23T10:12:11.047Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:12:12.084Z [INFO]   [ingress-gw] GET /api/v2/resource/1732 status=200 duration=24ms
+2026-07-23T10:12:13.121Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:12:14.158Z [INFO]   [worker-proc] Job #80734 processed successfully in queue 'default'
+2026-07-23T10:12:15.195Z [INFO]   [auth-service] User session validated successfully. uid=usr_009555 ip=192.168.1.236
+2026-07-23T10:12:16.232Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:12:17.269Z [INFO]   [ingress-gw] GET /api/v2/resource/1737 status=200 duration=29ms
+2026-07-23T10:12:18.306Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:12:19.343Z [INFO]   [worker-proc] Job #80739 processed successfully in queue 'default'
+2026-07-23T10:12:20.380Z [INFO]   [auth-service] User session validated successfully. uid=usr_009620 ip=192.168.1.241
+2026-07-23T10:12:21.417Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:12:22.454Z [INFO]   [ingress-gw] GET /api/v2/resource/1742 status=200 duration=34ms
+2026-07-23T10:12:23.491Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:12:24.528Z [INFO]   [worker-proc] Job #80744 processed successfully in queue 'default'
+2026-07-23T10:12:25.565Z [INFO]   [auth-service] User session validated successfully. uid=usr_009685 ip=192.168.1.246
+2026-07-23T10:12:26.602Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:12:27.639Z [INFO]   [ingress-gw] GET /api/v2/resource/1747 status=200 duration=39ms
+2026-07-23T10:12:28.676Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:12:29.713Z [INFO]   [worker-proc] Job #80749 processed successfully in queue 'default'
+2026-07-23T10:12:30.750Z [INFO]   [auth-service] User session validated successfully. uid=usr_009750 ip=192.168.1.1
+2026-07-23T10:12:31.787Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:12:32.824Z [INFO]   [ingress-gw] GET /api/v2/resource/1752 status=200 duration=44ms
+2026-07-23T10:12:33.861Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:12:34.898Z [INFO]   [worker-proc] Job #80754 processed successfully in queue 'default'
+2026-07-23T10:12:35.935Z [INFO]   [auth-service] User session validated successfully. uid=usr_009815 ip=192.168.1.6
+2026-07-23T10:12:36.972Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:12:37.009Z [INFO]   [ingress-gw] GET /api/v2/resource/1757 status=200 duration=49ms
+2026-07-23T10:12:38.046Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:12:39.083Z [INFO]   [worker-proc] Job #80759 processed successfully in queue 'default'
+2026-07-23T10:12:40.120Z [INFO]   [auth-service] User session validated successfully. uid=usr_009880 ip=192.168.1.11
+2026-07-23T10:12:41.157Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:12:42.194Z [INFO]   [ingress-gw] GET /api/v2/resource/1762 status=200 duration=54ms
+2026-07-23T10:12:43.231Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:12:44.268Z [INFO]   [worker-proc] Job #80764 processed successfully in queue 'default'
+2026-07-23T10:12:45.305Z [INFO]   [auth-service] User session validated successfully. uid=usr_009945 ip=192.168.1.16
+2026-07-23T10:12:46.342Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:12:47.379Z [INFO]   [ingress-gw] GET /api/v2/resource/1767 status=200 duration=59ms
+2026-07-23T10:12:48.416Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:12:49.453Z [INFO]   [worker-proc] Job #80769 processed successfully in queue 'default'
+2026-07-23T10:12:50.490Z [INFO]   [auth-service] User session validated successfully. uid=usr_010010 ip=192.168.1.21
+2026-07-23T10:12:51.527Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:12:52.564Z [INFO]   [ingress-gw] GET /api/v2/resource/1772 status=200 duration=64ms
+2026-07-23T10:12:53.601Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:12:54.638Z [INFO]   [worker-proc] Job #80774 processed successfully in queue 'default'
+2026-07-23T10:12:55.675Z [INFO]   [auth-service] User session validated successfully. uid=usr_010075 ip=192.168.1.26
+2026-07-23T10:12:56.712Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:12:57.749Z [INFO]   [ingress-gw] GET /api/v2/resource/1777 status=200 duration=69ms
+2026-07-23T10:12:58.786Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:12:59.823Z [INFO]   [worker-proc] Job #80779 processed successfully in queue 'default'
+2026-07-23T10:13:00.860Z [INFO]   [auth-service] User session validated successfully. uid=usr_010140 ip=192.168.1.31
+2026-07-23T10:13:01.897Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:13:02.934Z [INFO]   [ingress-gw] GET /api/v2/resource/1782 status=200 duration=74ms
+2026-07-23T10:13:03.971Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:13:04.008Z [INFO]   [worker-proc] Job #80784 processed successfully in queue 'default'
+2026-07-23T10:13:05.045Z [INFO]   [auth-service] User session validated successfully. uid=usr_010205 ip=192.168.1.36
+2026-07-23T10:13:06.082Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:13:07.119Z [INFO]   [ingress-gw] GET /api/v2/resource/1787 status=200 duration=79ms
+2026-07-23T10:13:08.156Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:13:09.193Z [INFO]   [worker-proc] Job #80789 processed successfully in queue 'default'
+2026-07-23T10:13:10.230Z [INFO]   [auth-service] User session validated successfully. uid=usr_010270 ip=192.168.1.41
+2026-07-23T10:13:11.267Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:13:12.304Z [INFO]   [ingress-gw] GET /api/v2/resource/1792 status=200 duration=84ms
+2026-07-23T10:13:13.341Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:13:14.378Z [INFO]   [worker-proc] Job #80794 processed successfully in queue 'default'
+2026-07-23T10:13:15.415Z [INFO]   [auth-service] User session validated successfully. uid=usr_010335 ip=192.168.1.46
+2026-07-23T10:13:16.452Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:13:17.489Z [INFO]   [ingress-gw] GET /api/v2/resource/1797 status=200 duration=89ms
+2026-07-23T10:13:18.526Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:13:19.563Z [INFO]   [worker-proc] Job #80799 processed successfully in queue 'default'
+2026-07-23T10:13:20.600Z [INFO]   [auth-service] User session validated successfully. uid=usr_010400 ip=192.168.1.51
+2026-07-23T10:13:21.637Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:13:22.674Z [INFO]   [ingress-gw] GET /api/v2/resource/1802 status=200 duration=14ms
+2026-07-23T10:13:23.711Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:13:24.748Z [INFO]   [worker-proc] Job #80804 processed successfully in queue 'default'
+2026-07-23T10:13:25.785Z [INFO]   [auth-service] User session validated successfully. uid=usr_010465 ip=192.168.1.56
+2026-07-23T10:13:26.822Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:13:27.859Z [INFO]   [ingress-gw] GET /api/v2/resource/1807 status=200 duration=19ms
+2026-07-23T10:13:28.896Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:13:29.933Z [INFO]   [worker-proc] Job #80809 processed successfully in queue 'default'
+2026-07-23T10:13:30.970Z [INFO]   [auth-service] User session validated successfully. uid=usr_010530 ip=192.168.1.61
+2026-07-23T10:13:31.007Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:13:32.044Z [INFO]   [ingress-gw] GET /api/v2/resource/1812 status=200 duration=24ms
+2026-07-23T10:13:33.081Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:13:34.118Z [INFO]   [worker-proc] Job #80814 processed successfully in queue 'default'
+2026-07-23T10:13:35.155Z [INFO]   [auth-service] User session validated successfully. uid=usr_010595 ip=192.168.1.66
+2026-07-23T10:13:36.192Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:13:37.229Z [INFO]   [ingress-gw] GET /api/v2/resource/1817 status=200 duration=29ms
+2026-07-23T10:13:38.266Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:13:39.303Z [INFO]   [worker-proc] Job #80819 processed successfully in queue 'default'
+2026-07-23T10:13:40.340Z [INFO]   [auth-service] User session validated successfully. uid=usr_010660 ip=192.168.1.71
+2026-07-23T10:13:41.377Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:13:42.414Z [INFO]   [ingress-gw] GET /api/v2/resource/1822 status=200 duration=34ms
+2026-07-23T10:13:43.451Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:13:44.488Z [INFO]   [worker-proc] Job #80824 processed successfully in queue 'default'
+2026-07-23T10:13:45.525Z [INFO]   [auth-service] User session validated successfully. uid=usr_010725 ip=192.168.1.76
+2026-07-23T10:13:46.562Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:13:47.599Z [INFO]   [ingress-gw] GET /api/v2/resource/1827 status=200 duration=39ms
+2026-07-23T10:13:48.636Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:13:49.673Z [INFO]   [worker-proc] Job #80829 processed successfully in queue 'default'
+2026-07-23T10:13:50.710Z [INFO]   [auth-service] User session validated successfully. uid=usr_010790 ip=192.168.1.81
+2026-07-23T10:13:51.747Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:13:52.784Z [INFO]   [ingress-gw] GET /api/v2/resource/1832 status=200 duration=44ms
+2026-07-23T10:13:53.821Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:13:54.858Z [INFO]   [worker-proc] Job #80834 processed successfully in queue 'default'
+2026-07-23T10:13:55.895Z [INFO]   [auth-service] User session validated successfully. uid=usr_010855 ip=192.168.1.86
+2026-07-23T10:13:56.932Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:13:57.969Z [INFO]   [ingress-gw] GET /api/v2/resource/1837 status=200 duration=49ms
+2026-07-23T10:13:58.006Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:13:59.043Z [INFO]   [worker-proc] Job #80839 processed successfully in queue 'default'
+2026-07-23T10:14:00.080Z [INFO]   [auth-service] User session validated successfully. uid=usr_010920 ip=192.168.1.91
+2026-07-23T10:14:01.117Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:14:02.154Z [INFO]   [ingress-gw] GET /api/v2/resource/1842 status=200 duration=54ms
+2026-07-23T10:14:03.191Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:14:04.228Z [INFO]   [worker-proc] Job #80844 processed successfully in queue 'default'
+2026-07-23T10:14:05.265Z [INFO]   [auth-service] User session validated successfully. uid=usr_010985 ip=192.168.1.96
+2026-07-23T10:14:06.302Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:14:07.339Z [INFO]   [ingress-gw] GET /api/v2/resource/1847 status=200 duration=59ms
+2026-07-23T10:14:08.376Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:14:09.413Z [INFO]   [worker-proc] Job #80849 processed successfully in queue 'default'
+2026-07-23T10:14:10.450Z [INFO]   [auth-service] User session validated successfully. uid=usr_011050 ip=192.168.1.101
+2026-07-23T10:14:11.487Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:14:12.524Z [INFO]   [ingress-gw] GET /api/v2/resource/1852 status=200 duration=64ms
+2026-07-23T10:14:13.561Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:14:14.598Z [INFO]   [worker-proc] Job #80854 processed successfully in queue 'default'
+2026-07-23T10:14:15.635Z [INFO]   [auth-service] User session validated successfully. uid=usr_011115 ip=192.168.1.106
+2026-07-23T10:14:16.672Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:14:17.709Z [INFO]   [ingress-gw] GET /api/v2/resource/1857 status=200 duration=69ms
+2026-07-23T10:14:18.746Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:14:19.783Z [INFO]   [worker-proc] Job #80859 processed successfully in queue 'default'
+2026-07-23T10:14:20.820Z [INFO]   [auth-service] User session validated successfully. uid=usr_011180 ip=192.168.1.111
+2026-07-23T10:14:21.857Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:14:22.894Z [INFO]   [ingress-gw] GET /api/v2/resource/1862 status=200 duration=74ms
+2026-07-23T10:14:23.931Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:14:24.968Z [INFO]   [worker-proc] Job #80864 processed successfully in queue 'default'
+2026-07-23T10:14:25.005Z [INFO]   [auth-service] User session validated successfully. uid=usr_011245 ip=192.168.1.116
+2026-07-23T10:14:26.042Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:14:27.079Z [INFO]   [ingress-gw] GET /api/v2/resource/1867 status=200 duration=79ms
+2026-07-23T10:14:28.116Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:14:29.153Z [INFO]   [worker-proc] Job #80869 processed successfully in queue 'default'
+2026-07-23T10:14:30.190Z [INFO]   [auth-service] User session validated successfully. uid=usr_011310 ip=192.168.1.121
+2026-07-23T10:14:31.227Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:14:32.264Z [INFO]   [ingress-gw] GET /api/v2/resource/1872 status=200 duration=84ms
+2026-07-23T10:14:33.301Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:14:34.338Z [INFO]   [worker-proc] Job #80874 processed successfully in queue 'default'
+2026-07-23T10:14:35.375Z [INFO]   [auth-service] User session validated successfully. uid=usr_011375 ip=192.168.1.126
+2026-07-23T10:14:36.412Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:14:37.449Z [INFO]   [ingress-gw] GET /api/v2/resource/1877 status=200 duration=89ms
+2026-07-23T10:14:38.486Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:14:39.523Z [INFO]   [worker-proc] Job #80879 processed successfully in queue 'default'
+2026-07-23T10:14:40.560Z [INFO]   [auth-service] User session validated successfully. uid=usr_011440 ip=192.168.1.131
+2026-07-23T10:14:41.597Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:14:42.634Z [INFO]   [ingress-gw] GET /api/v2/resource/1882 status=200 duration=14ms
+2026-07-23T10:14:43.671Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:14:44.708Z [INFO]   [worker-proc] Job #80884 processed successfully in queue 'default'
+2026-07-23T10:14:45.745Z [INFO]   [auth-service] User session validated successfully. uid=usr_011505 ip=192.168.1.136
+2026-07-23T10:14:46.782Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:14:47.819Z [INFO]   [ingress-gw] GET /api/v2/resource/1887 status=200 duration=19ms
+2026-07-23T10:14:48.856Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:14:49.893Z [INFO]   [worker-proc] Job #80889 processed successfully in queue 'default'
+2026-07-23T10:14:50.930Z [INFO]   [auth-service] User session validated successfully. uid=usr_011570 ip=192.168.1.141
+2026-07-23T10:14:51.967Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:14:52.004Z [INFO]   [ingress-gw] GET /api/v2/resource/1892 status=200 duration=24ms
+2026-07-23T10:14:53.041Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:14:54.078Z [INFO]   [worker-proc] Job #80894 processed successfully in queue 'default'
+2026-07-23T10:14:55.115Z [INFO]   [auth-service] User session validated successfully. uid=usr_011635 ip=192.168.1.146
+2026-07-23T10:14:56.152Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:14:57.189Z [INFO]   [ingress-gw] GET /api/v2/resource/1897 status=200 duration=29ms
+2026-07-23T10:14:58.226Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:14:59.263Z [INFO]   [worker-proc] Job #80899 processed successfully in queue 'default'
+2026-07-23T10:15:00.300Z [INFO]   [auth-service] User session validated successfully. uid=usr_011700 ip=192.168.1.151
+2026-07-23T10:15:01.337Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:15:02.374Z [INFO]   [ingress-gw] GET /api/v2/resource/1902 status=200 duration=34ms
+2026-07-23T10:15:03.411Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:15:04.448Z [INFO]   [worker-proc] Job #80904 processed successfully in queue 'default'
+2026-07-23T10:15:05.485Z [INFO]   [auth-service] User session validated successfully. uid=usr_011765 ip=192.168.1.156
+2026-07-23T10:15:06.522Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:15:07.559Z [INFO]   [ingress-gw] GET /api/v2/resource/1907 status=200 duration=39ms
+2026-07-23T10:15:08.596Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:15:09.633Z [INFO]   [worker-proc] Job #80909 processed successfully in queue 'default'
+2026-07-23T10:15:10.670Z [INFO]   [auth-service] User session validated successfully. uid=usr_011830 ip=192.168.1.161
+2026-07-23T10:15:11.707Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:15:12.744Z [INFO]   [ingress-gw] GET /api/v2/resource/1912 status=200 duration=44ms
+2026-07-23T10:15:13.781Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:15:14.818Z [INFO]   [worker-proc] Job #80914 processed successfully in queue 'default'
+2026-07-23T10:15:15.855Z [INFO]   [auth-service] User session validated successfully. uid=usr_011895 ip=192.168.1.166
+2026-07-23T10:15:16.892Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:15:17.929Z [INFO]   [ingress-gw] GET /api/v2/resource/1917 status=200 duration=49ms
+2026-07-23T10:15:18.966Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:15:19.003Z [INFO]   [worker-proc] Job #80919 processed successfully in queue 'default'
+2026-07-23T10:15:20.040Z [INFO]   [auth-service] User session validated successfully. uid=usr_011960 ip=192.168.1.171
+2026-07-23T10:15:21.077Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:15:22.114Z [INFO]   [ingress-gw] GET /api/v2/resource/1922 status=200 duration=54ms
+2026-07-23T10:15:23.151Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:15:24.188Z [INFO]   [worker-proc] Job #80924 processed successfully in queue 'default'
+2026-07-23T10:15:25.225Z [INFO]   [auth-service] User session validated successfully. uid=usr_012025 ip=192.168.1.176
+2026-07-23T10:15:26.262Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:15:27.299Z [INFO]   [ingress-gw] GET /api/v2/resource/1927 status=200 duration=59ms
+2026-07-23T10:15:28.336Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:15:29.373Z [INFO]   [worker-proc] Job #80929 processed successfully in queue 'default'
+2026-07-23T10:15:30.410Z [INFO]   [auth-service] User session validated successfully. uid=usr_012090 ip=192.168.1.181
+2026-07-23T10:15:31.447Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:15:32.484Z [INFO]   [ingress-gw] GET /api/v2/resource/1932 status=200 duration=64ms
+2026-07-23T10:15:33.521Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:15:34.558Z [INFO]   [worker-proc] Job #80934 processed successfully in queue 'default'
+2026-07-23T10:15:35.595Z [INFO]   [auth-service] User session validated successfully. uid=usr_012155 ip=192.168.1.186
+2026-07-23T10:15:36.632Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:15:37.669Z [INFO]   [ingress-gw] GET /api/v2/resource/1937 status=200 duration=69ms
+2026-07-23T10:15:38.706Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:15:39.743Z [INFO]   [worker-proc] Job #80939 processed successfully in queue 'default'
+2026-07-23T10:15:40.780Z [INFO]   [auth-service] User session validated successfully. uid=usr_012220 ip=192.168.1.191
+2026-07-23T10:15:41.817Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:15:42.854Z [INFO]   [ingress-gw] GET /api/v2/resource/1942 status=200 duration=74ms
+2026-07-23T10:15:43.891Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:15:44.928Z [INFO]   [worker-proc] Job #80944 processed successfully in queue 'default'
+2026-07-23T10:15:45.965Z [INFO]   [auth-service] User session validated successfully. uid=usr_012285 ip=192.168.1.196
+2026-07-23T10:15:46.002Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:15:47.039Z [INFO]   [ingress-gw] GET /api/v2/resource/1947 status=200 duration=79ms
+2026-07-23T10:15:48.076Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:15:49.113Z [INFO]   [worker-proc] Job #80949 processed successfully in queue 'default'
+2026-07-23T10:15:50.150Z [INFO]   [auth-service] User session validated successfully. uid=usr_012350 ip=192.168.1.201
+2026-07-23T10:15:51.187Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:15:52.224Z [INFO]   [ingress-gw] GET /api/v2/resource/1952 status=200 duration=84ms
+2026-07-23T10:15:53.261Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:15:54.298Z [INFO]   [worker-proc] Job #80954 processed successfully in queue 'default'
+2026-07-23T10:15:55.335Z [INFO]   [auth-service] User session validated successfully. uid=usr_012415 ip=192.168.1.206
+2026-07-23T10:15:56.372Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:15:57.409Z [INFO]   [ingress-gw] GET /api/v2/resource/1957 status=200 duration=89ms
+2026-07-23T10:15:58.446Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:15:59.483Z [INFO]   [worker-proc] Job #80959 processed successfully in queue 'default'
+2026-07-23T10:16:00.520Z [INFO]   [auth-service] User session validated successfully. uid=usr_012480 ip=192.168.1.211
+2026-07-23T10:16:01.557Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:16:02.594Z [INFO]   [ingress-gw] GET /api/v2/resource/1962 status=200 duration=14ms
+2026-07-23T10:16:03.631Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:16:04.668Z [INFO]   [worker-proc] Job #80964 processed successfully in queue 'default'
+2026-07-23T10:16:05.705Z [INFO]   [auth-service] User session validated successfully. uid=usr_012545 ip=192.168.1.216
+2026-07-23T10:16:06.742Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:16:07.779Z [INFO]   [ingress-gw] GET /api/v2/resource/1967 status=200 duration=19ms
+2026-07-23T10:16:08.816Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:16:09.853Z [INFO]   [worker-proc] Job #80969 processed successfully in queue 'default'
+2026-07-23T10:16:10.890Z [INFO]   [auth-service] User session validated successfully. uid=usr_012610 ip=192.168.1.221
+2026-07-23T10:16:11.927Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:16:12.964Z [INFO]   [ingress-gw] GET /api/v2/resource/1972 status=200 duration=24ms
+2026-07-23T10:16:13.001Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:16:14.038Z [INFO]   [worker-proc] Job #80974 processed successfully in queue 'default'
+2026-07-23T10:16:15.075Z [INFO]   [auth-service] User session validated successfully. uid=usr_012675 ip=192.168.1.226
+2026-07-23T10:16:16.112Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:16:17.149Z [INFO]   [ingress-gw] GET /api/v2/resource/1977 status=200 duration=29ms
+2026-07-23T10:16:18.186Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:16:19.223Z [INFO]   [worker-proc] Job #80979 processed successfully in queue 'default'
+2026-07-23T10:16:20.260Z [INFO]   [auth-service] User session validated successfully. uid=usr_012740 ip=192.168.1.231
+2026-07-23T10:16:21.297Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:16:22.334Z [INFO]   [ingress-gw] GET /api/v2/resource/1982 status=200 duration=34ms
+2026-07-23T10:16:23.371Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:16:24.408Z [INFO]   [worker-proc] Job #80984 processed successfully in queue 'default'
+2026-07-23T10:16:25.445Z [INFO]   [auth-service] User session validated successfully. uid=usr_012805 ip=192.168.1.236
+2026-07-23T10:16:26.482Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:16:27.519Z [INFO]   [ingress-gw] GET /api/v2/resource/1987 status=200 duration=39ms
+2026-07-23T10:16:28.556Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:16:29.593Z [INFO]   [worker-proc] Job #80989 processed successfully in queue 'default'
+2026-07-23T10:16:30.630Z [INFO]   [auth-service] User session validated successfully. uid=usr_012870 ip=192.168.1.241
+2026-07-23T10:16:31.667Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:16:32.704Z [INFO]   [ingress-gw] GET /api/v2/resource/1992 status=200 duration=44ms
+2026-07-23T10:16:33.741Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:16:34.778Z [INFO]   [worker-proc] Job #80994 processed successfully in queue 'default'
+2026-07-23T10:16:35.815Z [INFO]   [auth-service] User session validated successfully. uid=usr_012935 ip=192.168.1.246
+2026-07-23T10:16:36.852Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:16:37.889Z [INFO]   [ingress-gw] GET /api/v2/resource/1997 status=200 duration=49ms
+2026-07-23T10:16:38.926Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:16:39.963Z [INFO]   [worker-proc] Job #80999 processed successfully in queue 'default'
+2026-07-23T10:16:40.000Z [INFO]   [auth-service] User session validated successfully. uid=usr_013000 ip=192.168.1.1
+2026-07-23T10:16:41.037Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:16:42.074Z [INFO]   [ingress-gw] GET /api/v2/resource/2002 status=200 duration=54ms
+2026-07-23T10:16:43.111Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:16:44.148Z [INFO]   [worker-proc] Job #81004 processed successfully in queue 'default'
+2026-07-23T10:16:45.185Z [INFO]   [auth-service] User session validated successfully. uid=usr_013065 ip=192.168.1.6
+2026-07-23T10:16:46.222Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:16:47.259Z [INFO]   [ingress-gw] GET /api/v2/resource/2007 status=200 duration=59ms
+2026-07-23T10:16:48.296Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:16:49.333Z [INFO]   [worker-proc] Job #81009 processed successfully in queue 'default'
+2026-07-23T10:16:50.370Z [INFO]   [auth-service] User session validated successfully. uid=usr_013130 ip=192.168.1.11
+2026-07-23T10:16:51.407Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:16:52.444Z [INFO]   [ingress-gw] GET /api/v2/resource/2012 status=200 duration=64ms
+2026-07-23T10:16:53.481Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:16:54.518Z [INFO]   [worker-proc] Job #81014 processed successfully in queue 'default'
+2026-07-23T10:16:55.555Z [INFO]   [auth-service] User session validated successfully. uid=usr_013195 ip=192.168.1.16
+2026-07-23T10:16:56.592Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:16:57.629Z [INFO]   [ingress-gw] GET /api/v2/resource/2017 status=200 duration=69ms
+2026-07-23T10:16:58.666Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:16:59.703Z [INFO]   [worker-proc] Job #81019 processed successfully in queue 'default'
+2026-07-23T10:17:00.740Z [INFO]   [auth-service] User session validated successfully. uid=usr_013260 ip=192.168.1.21
+2026-07-23T10:17:01.777Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:17:02.814Z [INFO]   [ingress-gw] GET /api/v2/resource/2022 status=200 duration=74ms
+2026-07-23T10:17:03.851Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:17:04.888Z [INFO]   [worker-proc] Job #81024 processed successfully in queue 'default'
+2026-07-23T10:17:05.925Z [INFO]   [auth-service] User session validated successfully. uid=usr_013325 ip=192.168.1.26
+2026-07-23T10:17:06.962Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:17:07.999Z [INFO]   [ingress-gw] GET /api/v2/resource/2027 status=200 duration=79ms
+2026-07-23T10:17:08.036Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:17:09.073Z [INFO]   [worker-proc] Job #81029 processed successfully in queue 'default'
+2026-07-23T10:17:10.110Z [INFO]   [auth-service] User session validated successfully. uid=usr_013390 ip=192.168.1.31
+2026-07-23T10:17:11.147Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:17:12.184Z [INFO]   [ingress-gw] GET /api/v2/resource/2032 status=200 duration=84ms
+2026-07-23T10:17:13.221Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:17:14.258Z [INFO]   [worker-proc] Job #81034 processed successfully in queue 'default'
+2026-07-23T10:17:15.295Z [INFO]   [auth-service] User session validated successfully. uid=usr_013455 ip=192.168.1.36
+2026-07-23T10:17:16.332Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:17:17.369Z [INFO]   [ingress-gw] GET /api/v2/resource/2037 status=200 duration=89ms
+2026-07-23T10:17:18.406Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:17:19.443Z [INFO]   [worker-proc] Job #81039 processed successfully in queue 'default'
+2026-07-23T10:17:20.480Z [INFO]   [auth-service] User session validated successfully. uid=usr_013520 ip=192.168.1.41
+2026-07-23T10:17:21.517Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:17:22.554Z [INFO]   [ingress-gw] GET /api/v2/resource/2042 status=200 duration=14ms
+2026-07-23T10:17:23.591Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:17:24.628Z [INFO]   [worker-proc] Job #81044 processed successfully in queue 'default'
+2026-07-23T10:17:25.665Z [INFO]   [auth-service] User session validated successfully. uid=usr_013585 ip=192.168.1.46
+2026-07-23T10:17:26.702Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:17:27.739Z [INFO]   [ingress-gw] GET /api/v2/resource/2047 status=200 duration=19ms
+2026-07-23T10:17:28.776Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:17:29.813Z [INFO]   [worker-proc] Job #81049 processed successfully in queue 'default'
+2026-07-23T10:17:30.850Z [INFO]   [auth-service] User session validated successfully. uid=usr_013650 ip=192.168.1.51
+2026-07-23T10:17:31.887Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:17:32.924Z [INFO]   [ingress-gw] GET /api/v2/resource/2052 status=200 duration=24ms
+2026-07-23T10:17:33.961Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:17:34.998Z [INFO]   [worker-proc] Job #81054 processed successfully in queue 'default'
+2026-07-23T10:17:35.035Z [INFO]   [auth-service] User session validated successfully. uid=usr_013715 ip=192.168.1.56
+2026-07-23T10:17:36.072Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:17:37.109Z [INFO]   [ingress-gw] GET /api/v2/resource/2057 status=200 duration=29ms
+2026-07-23T10:17:38.146Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:17:39.183Z [INFO]   [worker-proc] Job #81059 processed successfully in queue 'default'
+2026-07-23T10:17:40.220Z [INFO]   [auth-service] User session validated successfully. uid=usr_013780 ip=192.168.1.61
+2026-07-23T10:17:41.257Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:17:42.294Z [INFO]   [ingress-gw] GET /api/v2/resource/2062 status=200 duration=34ms
+2026-07-23T10:17:43.331Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:17:44.368Z [INFO]   [worker-proc] Job #81064 processed successfully in queue 'default'
+2026-07-23T10:17:45.405Z [INFO]   [auth-service] User session validated successfully. uid=usr_013845 ip=192.168.1.66
+2026-07-23T10:17:46.442Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:17:47.479Z [INFO]   [ingress-gw] GET /api/v2/resource/2067 status=200 duration=39ms
+2026-07-23T10:17:48.516Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:17:49.553Z [INFO]   [worker-proc] Job #81069 processed successfully in queue 'default'
+2026-07-23T10:17:50.590Z [INFO]   [auth-service] User session validated successfully. uid=usr_013910 ip=192.168.1.71
+2026-07-23T10:17:51.627Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:17:52.664Z [INFO]   [ingress-gw] GET /api/v2/resource/2072 status=200 duration=44ms
+2026-07-23T10:17:53.701Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:17:54.738Z [INFO]   [worker-proc] Job #81074 processed successfully in queue 'default'
+2026-07-23T10:17:55.775Z [INFO]   [auth-service] User session validated successfully. uid=usr_013975 ip=192.168.1.76
+2026-07-23T10:17:56.812Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:17:57.849Z [INFO]   [ingress-gw] GET /api/v2/resource/2077 status=200 duration=49ms
+2026-07-23T10:17:58.886Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:17:59.923Z [INFO]   [worker-proc] Job #81079 processed successfully in queue 'default'
+2026-07-23T10:18:00.960Z [INFO]   [auth-service] User session validated successfully. uid=usr_014040 ip=192.168.1.81
+2026-07-23T10:18:01.997Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:18:02.034Z [INFO]   [ingress-gw] GET /api/v2/resource/2082 status=200 duration=54ms
+2026-07-23T10:18:03.071Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:18:04.108Z [INFO]   [worker-proc] Job #81084 processed successfully in queue 'default'
+2026-07-23T10:18:05.145Z [INFO]   [auth-service] User session validated successfully. uid=usr_014105 ip=192.168.1.86
+2026-07-23T10:18:06.182Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:18:07.219Z [INFO]   [ingress-gw] GET /api/v2/resource/2087 status=200 duration=59ms
+2026-07-23T10:18:08.256Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:18:09.293Z [INFO]   [worker-proc] Job #81089 processed successfully in queue 'default'
+2026-07-23T10:18:10.330Z [INFO]   [auth-service] User session validated successfully. uid=usr_014170 ip=192.168.1.91
+2026-07-23T10:18:11.367Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:18:12.404Z [INFO]   [ingress-gw] GET /api/v2/resource/2092 status=200 duration=64ms
+2026-07-23T10:18:13.441Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:18:14.478Z [INFO]   [worker-proc] Job #81094 processed successfully in queue 'default'
+2026-07-23T10:18:15.515Z [INFO]   [auth-service] User session validated successfully. uid=usr_014235 ip=192.168.1.96
+2026-07-23T10:18:16.552Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:18:17.589Z [INFO]   [ingress-gw] GET /api/v2/resource/2097 status=200 duration=69ms
+2026-07-23T10:18:18.626Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:18:19.663Z [INFO]   [worker-proc] Job #81099 processed successfully in queue 'default'
+2026-07-23T10:18:20.700Z [INFO]   [auth-service] User session validated successfully. uid=usr_014300 ip=192.168.1.101
+2026-07-23T10:18:21.737Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:18:22.774Z [INFO]   [ingress-gw] GET /api/v2/resource/2102 status=200 duration=74ms
+2026-07-23T10:18:23.811Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:18:24.848Z [INFO]   [worker-proc] Job #81104 processed successfully in queue 'default'
+2026-07-23T10:18:25.885Z [INFO]   [auth-service] User session validated successfully. uid=usr_014365 ip=192.168.1.106
+2026-07-23T10:18:26.922Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:18:27.959Z [INFO]   [ingress-gw] GET /api/v2/resource/2107 status=200 duration=79ms
+2026-07-23T10:18:28.996Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:18:29.033Z [INFO]   [worker-proc] Job #81109 processed successfully in queue 'default'
+2026-07-23T10:18:30.070Z [INFO]   [auth-service] User session validated successfully. uid=usr_014430 ip=192.168.1.111
+2026-07-23T10:18:31.107Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:18:32.144Z [INFO]   [ingress-gw] GET /api/v2/resource/2112 status=200 duration=84ms
+2026-07-23T10:18:33.181Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:18:34.218Z [INFO]   [worker-proc] Job #81114 processed successfully in queue 'default'
+2026-07-23T10:18:35.255Z [INFO]   [auth-service] User session validated successfully. uid=usr_014495 ip=192.168.1.116
+2026-07-23T10:18:36.292Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:18:37.329Z [INFO]   [ingress-gw] GET /api/v2/resource/2117 status=200 duration=89ms
+2026-07-23T10:18:38.366Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:18:39.403Z [INFO]   [worker-proc] Job #81119 processed successfully in queue 'default'
+2026-07-23T10:18:40.440Z [INFO]   [auth-service] User session validated successfully. uid=usr_014560 ip=192.168.1.121
+2026-07-23T10:18:41.477Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:18:42.514Z [INFO]   [ingress-gw] GET /api/v2/resource/2122 status=200 duration=14ms
+2026-07-23T10:18:43.551Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:18:44.588Z [INFO]   [worker-proc] Job #81124 processed successfully in queue 'default'
+2026-07-23T10:18:45.625Z [INFO]   [auth-service] User session validated successfully. uid=usr_014625 ip=192.168.1.126
+2026-07-23T10:18:46.662Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:18:47.699Z [INFO]   [ingress-gw] GET /api/v2/resource/2127 status=200 duration=19ms
+2026-07-23T10:18:48.736Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:18:49.773Z [INFO]   [worker-proc] Job #81129 processed successfully in queue 'default'
+2026-07-23T10:18:50.810Z [INFO]   [auth-service] User session validated successfully. uid=usr_014690 ip=192.168.1.131
+2026-07-23T10:18:51.847Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:18:52.884Z [INFO]   [ingress-gw] GET /api/v2/resource/2132 status=200 duration=24ms
+2026-07-23T10:18:53.921Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:18:54.958Z [INFO]   [worker-proc] Job #81134 processed successfully in queue 'default'
+2026-07-23T10:18:55.995Z [INFO]   [auth-service] User session validated successfully. uid=usr_014755 ip=192.168.1.136
+2026-07-23T10:18:56.032Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:18:57.069Z [INFO]   [ingress-gw] GET /api/v2/resource/2137 status=200 duration=29ms
+2026-07-23T10:18:58.106Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:18:59.143Z [INFO]   [worker-proc] Job #81139 processed successfully in queue 'default'
+2026-07-23T10:19:00.180Z [INFO]   [auth-service] User session validated successfully. uid=usr_014820 ip=192.168.1.141
+2026-07-23T10:19:01.217Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:19:02.254Z [INFO]   [ingress-gw] GET /api/v2/resource/2142 status=200 duration=34ms
+2026-07-23T10:19:03.291Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:19:04.328Z [INFO]   [worker-proc] Job #81144 processed successfully in queue 'default'
+2026-07-23T10:19:05.365Z [INFO]   [auth-service] User session validated successfully. uid=usr_014885 ip=192.168.1.146
+2026-07-23T10:19:06.402Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:19:07.439Z [INFO]   [ingress-gw] GET /api/v2/resource/2147 status=200 duration=39ms
+2026-07-23T10:19:08.476Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:19:09.513Z [INFO]   [worker-proc] Job #81149 processed successfully in queue 'default'
+2026-07-23T10:19:10.550Z [INFO]   [auth-service] User session validated successfully. uid=usr_014950 ip=192.168.1.151
+2026-07-23T10:19:11.587Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:19:12.624Z [INFO]   [ingress-gw] GET /api/v2/resource/2152 status=200 duration=44ms
+2026-07-23T10:19:13.661Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:19:14.698Z [INFO]   [worker-proc] Job #81154 processed successfully in queue 'default'
+2026-07-23T10:19:15.735Z [INFO]   [auth-service] User session validated successfully. uid=usr_015015 ip=192.168.1.156
+2026-07-23T10:19:16.772Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:19:17.809Z [INFO]   [ingress-gw] GET /api/v2/resource/2157 status=200 duration=49ms
+2026-07-23T10:19:18.846Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:19:19.883Z [INFO]   [worker-proc] Job #81159 processed successfully in queue 'default'
+2026-07-23T10:19:20.920Z [INFO]   [auth-service] User session validated successfully. uid=usr_015080 ip=192.168.1.161
+2026-07-23T10:19:21.957Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:19:22.994Z [INFO]   [ingress-gw] GET /api/v2/resource/2162 status=200 duration=54ms
+2026-07-23T10:19:23.031Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:19:24.068Z [INFO]   [worker-proc] Job #81164 processed successfully in queue 'default'
+2026-07-23T10:19:25.105Z [INFO]   [auth-service] User session validated successfully. uid=usr_015145 ip=192.168.1.166
+2026-07-23T10:19:26.142Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:19:27.179Z [INFO]   [ingress-gw] GET /api/v2/resource/2167 status=200 duration=59ms
+2026-07-23T10:19:28.216Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:19:29.253Z [INFO]   [worker-proc] Job #81169 processed successfully in queue 'default'
+2026-07-23T10:19:30.290Z [INFO]   [auth-service] User session validated successfully. uid=usr_015210 ip=192.168.1.171
+2026-07-23T10:19:31.327Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:19:32.364Z [INFO]   [ingress-gw] GET /api/v2/resource/2172 status=200 duration=64ms
+2026-07-23T10:19:33.401Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:19:34.438Z [INFO]   [worker-proc] Job #81174 processed successfully in queue 'default'
+2026-07-23T10:19:35.475Z [INFO]   [auth-service] User session validated successfully. uid=usr_015275 ip=192.168.1.176
+2026-07-23T10:19:36.512Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:19:37.549Z [INFO]   [ingress-gw] GET /api/v2/resource/2177 status=200 duration=69ms
+2026-07-23T10:19:38.586Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:19:39.623Z [INFO]   [worker-proc] Job #81179 processed successfully in queue 'default'
+2026-07-23T10:19:40.660Z [INFO]   [auth-service] User session validated successfully. uid=usr_015340 ip=192.168.1.181
+2026-07-23T10:19:41.697Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:19:42.734Z [INFO]   [ingress-gw] GET /api/v2/resource/2182 status=200 duration=74ms
+2026-07-23T10:19:43.771Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:19:44.808Z [INFO]   [worker-proc] Job #81184 processed successfully in queue 'default'
+2026-07-23T10:19:45.845Z [INFO]   [auth-service] User session validated successfully. uid=usr_015405 ip=192.168.1.186
+2026-07-23T10:19:46.882Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:19:47.919Z [INFO]   [ingress-gw] GET /api/v2/resource/2187 status=200 duration=79ms
+2026-07-23T10:19:48.956Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:19:49.993Z [INFO]   [worker-proc] Job #81189 processed successfully in queue 'default'
+2026-07-23T10:19:50.030Z [INFO]   [auth-service] User session validated successfully. uid=usr_015470 ip=192.168.1.191
+2026-07-23T10:19:51.067Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:19:52.104Z [INFO]   [ingress-gw] GET /api/v2/resource/2192 status=200 duration=84ms
+2026-07-23T10:19:53.141Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:19:54.178Z [INFO]   [worker-proc] Job #81194 processed successfully in queue 'default'
+2026-07-23T10:19:55.215Z [INFO]   [auth-service] User session validated successfully. uid=usr_015535 ip=192.168.1.196
+2026-07-23T10:19:56.252Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:19:57.289Z [INFO]   [ingress-gw] GET /api/v2/resource/2197 status=200 duration=89ms
+2026-07-23T10:19:58.326Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:19:59.363Z [INFO]   [worker-proc] Job #81199 processed successfully in queue 'default'
+2026-07-23T10:20:00.400Z [INFO]   [auth-service] User session validated successfully. uid=usr_015600 ip=192.168.1.201
+2026-07-23T10:20:01.437Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:20:02.474Z [INFO]   [ingress-gw] GET /api/v2/resource/2202 status=200 duration=14ms
+2026-07-23T10:20:03.511Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:20:04.548Z [INFO]   [worker-proc] Job #81204 processed successfully in queue 'default'
+2026-07-23T10:20:05.585Z [INFO]   [auth-service] User session validated successfully. uid=usr_015665 ip=192.168.1.206
+2026-07-23T10:20:06.622Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:20:07.659Z [INFO]   [ingress-gw] GET /api/v2/resource/2207 status=200 duration=19ms
+2026-07-23T10:20:08.696Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:20:09.733Z [INFO]   [worker-proc] Job #81209 processed successfully in queue 'default'
+2026-07-23T10:20:10.770Z [INFO]   [auth-service] User session validated successfully. uid=usr_015730 ip=192.168.1.211
+2026-07-23T10:20:11.807Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:20:12.844Z [INFO]   [ingress-gw] GET /api/v2/resource/2212 status=200 duration=24ms
+2026-07-23T10:20:13.881Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:20:14.918Z [INFO]   [worker-proc] Job #81214 processed successfully in queue 'default'
+2026-07-23T10:20:15.955Z [INFO]   [auth-service] User session validated successfully. uid=usr_015795 ip=192.168.1.216
+2026-07-23T10:20:16.992Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:20:17.029Z [INFO]   [ingress-gw] GET /api/v2/resource/2217 status=200 duration=29ms
+2026-07-23T10:20:18.066Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:20:19.103Z [INFO]   [worker-proc] Job #81219 processed successfully in queue 'default'
+2026-07-23T10:20:20.140Z [INFO]   [auth-service] User session validated successfully. uid=usr_015860 ip=192.168.1.221
+2026-07-23T10:20:21.177Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:20:22.214Z [INFO]   [ingress-gw] GET /api/v2/resource/2222 status=200 duration=34ms
+2026-07-23T10:20:23.251Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:20:24.288Z [INFO]   [worker-proc] Job #81224 processed successfully in queue 'default'
+2026-07-23T10:20:25.325Z [INFO]   [auth-service] User session validated successfully. uid=usr_015925 ip=192.168.1.226
+2026-07-23T10:20:26.362Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:20:27.399Z [INFO]   [ingress-gw] GET /api/v2/resource/2227 status=200 duration=39ms
+2026-07-23T10:20:28.436Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:20:29.473Z [INFO]   [worker-proc] Job #81229 processed successfully in queue 'default'
+2026-07-23T10:20:30.510Z [INFO]   [auth-service] User session validated successfully. uid=usr_015990 ip=192.168.1.231
+2026-07-23T10:20:31.547Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:20:32.584Z [INFO]   [ingress-gw] GET /api/v2/resource/2232 status=200 duration=44ms
+2026-07-23T10:20:33.621Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:20:34.658Z [INFO]   [worker-proc] Job #81234 processed successfully in queue 'default'
+2026-07-23T10:20:35.695Z [INFO]   [auth-service] User session validated successfully. uid=usr_016055 ip=192.168.1.236
+2026-07-23T10:20:36.732Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:20:37.769Z [INFO]   [ingress-gw] GET /api/v2/resource/2237 status=200 duration=49ms
+2026-07-23T10:20:38.806Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:20:39.843Z [INFO]   [worker-proc] Job #81239 processed successfully in queue 'default'
+2026-07-23T10:20:40.880Z [INFO]   [auth-service] User session validated successfully. uid=usr_016120 ip=192.168.1.241
+2026-07-23T10:20:41.917Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:20:42.954Z [INFO]   [ingress-gw] GET /api/v2/resource/2242 status=200 duration=54ms
+2026-07-23T10:20:43.991Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:20:44.028Z [INFO]   [worker-proc] Job #81244 processed successfully in queue 'default'
+2026-07-23T10:20:45.065Z [INFO]   [auth-service] User session validated successfully. uid=usr_016185 ip=192.168.1.246
+2026-07-23T10:20:46.102Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:20:47.139Z [INFO]   [ingress-gw] GET /api/v2/resource/2247 status=200 duration=59ms
+2026-07-23T10:20:48.176Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:20:49.213Z [INFO]   [worker-proc] Job #81249 processed successfully in queue 'default'
+2026-07-23T10:20:50.250Z [INFO]   [auth-service] User session validated successfully. uid=usr_016250 ip=192.168.1.1
+2026-07-23T10:20:51.287Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:20:52.324Z [INFO]   [ingress-gw] GET /api/v2/resource/2252 status=200 duration=64ms
+2026-07-23T10:20:53.361Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:20:54.398Z [INFO]   [worker-proc] Job #81254 processed successfully in queue 'default'
+2026-07-23T10:20:55.435Z [INFO]   [auth-service] User session validated successfully. uid=usr_016315 ip=192.168.1.6
+2026-07-23T10:20:56.472Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:20:57.509Z [INFO]   [ingress-gw] GET /api/v2/resource/2257 status=200 duration=69ms
+2026-07-23T10:20:58.546Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:20:59.583Z [INFO]   [worker-proc] Job #81259 processed successfully in queue 'default'
+2026-07-23T10:21:00.620Z [INFO]   [auth-service] User session validated successfully. uid=usr_016380 ip=192.168.1.11
+2026-07-23T10:21:01.657Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:21:02.694Z [INFO]   [ingress-gw] GET /api/v2/resource/2262 status=200 duration=74ms
+2026-07-23T10:21:03.731Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:21:04.768Z [INFO]   [worker-proc] Job #81264 processed successfully in queue 'default'
+2026-07-23T10:21:05.805Z [INFO]   [auth-service] User session validated successfully. uid=usr_016445 ip=192.168.1.16
+2026-07-23T10:21:06.842Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:21:07.879Z [INFO]   [ingress-gw] GET /api/v2/resource/2267 status=200 duration=79ms
+2026-07-23T10:21:08.916Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:21:09.953Z [INFO]   [worker-proc] Job #81269 processed successfully in queue 'default'
+2026-07-23T10:21:10.990Z [INFO]   [auth-service] User session validated successfully. uid=usr_016510 ip=192.168.1.21
+2026-07-23T10:21:11.027Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:21:12.064Z [INFO]   [ingress-gw] GET /api/v2/resource/2272 status=200 duration=84ms
+2026-07-23T10:21:13.101Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:21:14.138Z [INFO]   [worker-proc] Job #81274 processed successfully in queue 'default'
+2026-07-23T10:21:15.175Z [INFO]   [auth-service] User session validated successfully. uid=usr_016575 ip=192.168.1.26
+2026-07-23T10:21:16.212Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:21:17.249Z [INFO]   [ingress-gw] GET /api/v2/resource/2277 status=200 duration=89ms
+2026-07-23T10:21:18.286Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:21:19.323Z [INFO]   [worker-proc] Job #81279 processed successfully in queue 'default'
+2026-07-23T10:21:20.360Z [INFO]   [auth-service] User session validated successfully. uid=usr_016640 ip=192.168.1.31
+2026-07-23T10:21:21.397Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
+2026-07-23T10:21:22.434Z [INFO]   [ingress-gw] GET /api/v2/resource/2282 status=200 duration=14ms
+2026-07-23T10:21:23.471Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:21:24.508Z [INFO]   [worker-proc] Job #81284 processed successfully in queue 'default'
+2026-07-23T10:21:25.545Z [INFO]   [auth-service] User session validated successfully. uid=usr_016705 ip=192.168.1.36
+2026-07-23T10:21:26.582Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=31 idle_conns=19
+2026-07-23T10:21:27.619Z [INFO]   [ingress-gw] GET /api/v2/resource/2287 status=200 duration=19ms
+2026-07-23T10:21:28.656Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:21:29.693Z [INFO]   [worker-proc] Job #81289 processed successfully in queue 'default'
+2026-07-23T10:21:30.730Z [INFO]   [auth-service] User session validated successfully. uid=usr_016770 ip=192.168.1.41
+2026-07-23T10:21:31.767Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=36 idle_conns=14
+2026-07-23T10:21:32.804Z [INFO]   [ingress-gw] GET /api/v2/resource/2292 status=200 duration=24ms
+2026-07-23T10:21:33.841Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:21:34.878Z [INFO]   [worker-proc] Job #81294 processed successfully in queue 'default'
+2026-07-23T10:21:35.915Z [INFO]   [auth-service] User session validated successfully. uid=usr_016835 ip=192.168.1.46
+2026-07-23T10:21:36.952Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=41 idle_conns=9
+2026-07-23T10:21:37.989Z [INFO]   [ingress-gw] GET /api/v2/resource/2297 status=200 duration=29ms
+2026-07-23T10:21:38.026Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:21:39.063Z [INFO]   [worker-proc] Job #81299 processed successfully in queue 'default'
+2026-07-23T10:21:40.100Z [INFO]   [auth-service] User session validated successfully. uid=usr_016900 ip=192.168.1.51
+2026-07-23T10:21:41.137Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=46 idle_conns=4
+2026-07-23T10:21:42.174Z [INFO]   [ingress-gw] GET /api/v2/resource/2302 status=200 duration=34ms
+2026-07-23T10:21:43.211Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:21:44.248Z [INFO]   [worker-proc] Job #81304 processed successfully in queue 'default'
+2026-07-23T10:21:45.285Z [INFO]   [auth-service] User session validated successfully. uid=usr_016965 ip=192.168.1.56
+2026-07-23T10:21:46.322Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=6 idle_conns=44
+2026-07-23T10:21:47.359Z [INFO]   [ingress-gw] GET /api/v2/resource/2307 status=200 duration=39ms
+2026-07-23T10:21:48.396Z [WARN]   [cache-mem] High memory watermark reached: 83% capacity
+2026-07-23T10:21:49.433Z [INFO]   [worker-proc] Job #81309 processed successfully in queue 'default'
+2026-07-23T10:21:50.470Z [INFO]   [auth-service] User session validated successfully. uid=usr_017030 ip=192.168.1.61
+2026-07-23T10:21:51.507Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=11 idle_conns=39
+2026-07-23T10:21:52.544Z [INFO]   [ingress-gw] GET /api/v2/resource/2312 status=200 duration=44ms
+2026-07-23T10:21:53.581Z [WARN]   [cache-mem] High memory watermark reached: 88% capacity
+2026-07-23T10:21:54.618Z [INFO]   [worker-proc] Job #81314 processed successfully in queue 'default'
+2026-07-23T10:21:55.655Z [INFO]   [auth-service] User session validated successfully. uid=usr_017095 ip=192.168.1.66
+2026-07-23T10:21:56.692Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=16 idle_conns=34
+2026-07-23T10:21:57.729Z [INFO]   [ingress-gw] GET /api/v2/resource/2317 status=200 duration=49ms
+2026-07-23T10:21:58.766Z [WARN]   [cache-mem] High memory watermark reached: 93% capacity
+2026-07-23T10:21:59.803Z [INFO]   [worker-proc] Job #81319 processed successfully in queue 'default'
+2026-07-23T10:22:00.840Z [INFO]   [auth-service] User session validated successfully. uid=usr_017160 ip=192.168.1.71
+2026-07-23T10:22:01.877Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=21 idle_conns=29
+2026-07-23T10:22:02.914Z [INFO]   [ingress-gw] GET /api/v2/resource/2322 status=200 duration=54ms
+2026-07-23T10:22:03.951Z [WARN]   [cache-mem] High memory watermark reached: 78% capacity
+2026-07-23T10:22:04.988Z [INFO]   [worker-proc] Job #81324 processed successfully in queue 'default'
+2026-07-23T10:22:05.025Z [INFO]   [auth-service] User session validated successfully. uid=usr_017225 ip=192.168.1.76
+2026-07-23T10:22:06.062Z [DEBUG]  [db-pool] Connection leased from pool. active_conns=26 idle_conns=24
